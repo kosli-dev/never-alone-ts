@@ -8,11 +8,8 @@ jest.mock('../src/github');
 
 describe('Evaluator', () => {
   const mockConfig: Config = {
-    serviceName: 'test',
-    releaseBranch: 'main',
     baseTag: 'v1.0.0',
     currentTag: 'v1.1.0',
-    releaseCommitSha: 'sha',
     githubRepository: 'owner/repo',
     githubToken: 'token',
     exemptions: {
@@ -26,7 +23,12 @@ describe('Evaluator', () => {
   let evaluator: Evaluator;
 
   beforeEach(() => {
-    mockGithub = new GitHubClient('owner/repo', 'token') as jest.Mocked<GitHubClient>;
+    // Manually create the mock object to ensure methods are present
+    mockGithub = {
+      findPRForCommit: jest.fn(),
+      getPRReviews: jest.fn(),
+    } as any;
+    
     evaluator = new Evaluator(mockConfig, mockGithub);
     jest.resetAllMocks();
   });
@@ -136,12 +138,6 @@ describe('Evaluator', () => {
   });
 
   it('should fail if PR is approved BEFORE the commit date', async () => {
-    // Note: The logic in src/evaluator.ts says:
-    // const isApprovedBefore = approvalDate ? approvalDate.getTime() > commit.date.getTime() : false;
-    // So "isApprovedBefore" here means "Approval Date is LATER than Commit Date".
-    // Wait, let's re-read the requirement: "Verify that the commit's author date is earlier than the date of the independent approval."
-    // Yes, Commit Date < Approval Date.
-    
     const commitDate = new Date('2023-01-01T12:00:00Z');
     const approvalDate = new Date('2023-01-01T10:00:00Z');
     const commit: CommitInfo = {

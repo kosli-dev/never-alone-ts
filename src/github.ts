@@ -60,4 +60,18 @@ export class GitHubClient {
       return [];
     }
   }
+
+  async getPRCommits(prNumber: number) {
+    try {
+      const response = await this.octokit.pulls.listCommits({
+        owner: this.owner,
+        repo: this.repo,
+        pull_number: prNumber,
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching commits for PR #${prNumber}: ${error}`);
+      return [];
+    }
+  }
 }

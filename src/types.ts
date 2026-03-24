@@ -1,9 +1,6 @@
 export interface Config {
-  serviceName: string;
-  releaseBranch: string;
   baseTag: string;
   currentTag: string;
-  releaseCommitSha: string;
   githubRepository: string;
   githubToken: string;
   exemptions: {

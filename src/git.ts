@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 import { CommitInfo } from './types';
 
-export function getCommits(baseTag: string, currentTag: string, releaseBranch: string, repoPath: string = process.cwd()): CommitInfo[] {
+export function getCommits(baseTag: string, currentTag: string, repoPath: string = process.cwd()): CommitInfo[] {
   const range = baseTag ? `${baseTag}..${currentTag}` : currentTag;
   const command = `git log ${range} --first-parent --pretty="format:%H||%an||%aI||%s"`;
   

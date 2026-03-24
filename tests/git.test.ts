@@ -8,7 +8,7 @@ describe('Git Interaction', () => {
     const mockOutput = 'sha1||author1||2023-01-01T00:00:00Z||msg1\nsha2||author2||2023-01-02T00:00:00Z||msg2';
     (execSync as jest.Mock).mockReturnValue(mockOutput);
 
-    const commits = getCommits('v1.0.0', 'v1.1.0', 'main');
+    const commits = getCommits('v1.0.0', 'v1.1.0');
 
     expect(commits).toHaveLength(2);
     expect(commits[0].sha).toBe('sha1');
@@ -18,7 +18,7 @@ describe('Git Interaction', () => {
 
   it('should return empty list if git log is empty', () => {
     (execSync as jest.Mock).mockReturnValue('');
-    const commits = getCommits('v1.0.0', 'v1.1.0', 'main');
+    const commits = getCommits('v1.0.0', 'v1.1.0');
     expect(commits).toHaveLength(0);
   });
 

@@ -19,10 +19,9 @@ async function main() {
     const evaluator = new Evaluator(config, github, repoPath);
 
     console.log(`Analyzing repository: ${repoPath}`);
-    console.log(`Service: ${config.serviceName}`);
     console.log(`Range: ${config.baseTag || 'Repository Start'} to ${config.currentTag}`);
 
-    const commits = getCommits(config.baseTag, config.currentTag, config.releaseBranch, repoPath);
+    const commits = getCommits(config.baseTag, config.currentTag, repoPath);
     console.log(`Found ${commits.length} commits.`);
 
     const results: EvaluationResult[] = [];

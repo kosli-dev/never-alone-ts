@@ -38,21 +38,25 @@ export class Evaluator {
       return { commit, status: 'FAIL', reason: 'No associated Pull Request found.' };
     }
 
+    const prCommits = await this.github.getPRCommits(prNumber);
+    const prDates = prCommits.map((c: any) => new Date(c.commit.author?.date || c.commit.committer?.date || 0).getTime());
+    const latestPRCommitTime = Math.max(...prDates);
+
     const reviews = await this.github.getPRReviews(prNumber);
     const independentApproval = reviews.find((review: any) => {
       if (review.state !== 'APPROVED' || !review.user) return false;
       
       const isIndependent = review.user.login !== commit.author;
       const approvalDate = review.submitted_at ? new Date(review.submitted_at) : null;
-      const isApprovedBefore = approvalDate ? approvalDate.getTime() > commit.date.getTime() : false;
+      const isApprovedAfterCode = approvalDate ? approvalDate.getTime() > latestPRCommitTime : false;
       
-      return isIndependent && isApprovedBefore;
+      return isIndependent && isApprovedAfterCode;
     });
 
     if (independentApproval) {
-      return { commit, status: 'PASS', reason: `PR #${prNumber} approved by ${independentApproval.user?.login}.`, prNumber };
+      return { commit, status: 'PASS', reason: `PR #${prNumber} approved by ${independentApproval.user?.login} after latest PR commit.`, prNumber };
     }
 
-    return { commit, status: 'FAIL', reason: `PR #${prNumber} does not have an independent approval before the commit.`, prNumber };
+    return { commit, status: 'FAIL', reason: `PR #${prNumber} does not have an independent approval after the latest commit in the PR.`, prNumber };
   }
 }
