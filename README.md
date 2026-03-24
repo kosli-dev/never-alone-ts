@@ -40,11 +40,8 @@ Create a `.env` file in the root directory (see `.env.example` for a template):
 
 | Variable | Description |
 | :--- | :--- |
-| `SERVICE_NAME` | The name of the service being evaluated. |
-| `RELEASE_BRANCH` | The branch the release was created from (e.g., `main`). |
 | `BASE_TAG` | The starting git tag (e.g., `v1.0.0`). Leave empty to start from the repository's beginning. |
 | `CURRENT_TAG` | The ending git tag/release being evaluated (e.g., `v1.1.0`). |
-| `RELEASE_COMMIT_SHA` | The commit SHA corresponding to the `CURRENT_TAG`. |
 | `GITHUB_REPOSITORY` | The owner and repository name (e.g., `owner/repo`). |
 | `GITHUB_TOKEN` | Your GitHub Personal Access Token. |
 
