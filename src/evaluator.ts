@@ -7,9 +7,17 @@ export class Evaluator {
   constructor(private config: Config, private github: GitHubClient, private repoPath: string = process.cwd()) {}
 
   async evaluateCommit(commit: CommitInfo): Promise<EvaluationResult> {
+    // Enhance commit author with github info
+    const githubAuthor = await this.github.getCommitDetails(commit.sha);
+    if (githubAuthor) {
+      commit.author.github_login = githubAuthor.github_login;
+      commit.author.github_id = githubAuthor.github_id;
+      commit.author.html_url = githubAuthor.html_url;
+    }
+
     // 1. Service Account Commit
     for (const pattern of this.config.exemptions.serviceAccounts) {
-      if (new RegExp(pattern).test(commit.author)) {
+      if (new RegExp(pattern).test(commit.author.git_name || '') || (commit.author.github_login && new RegExp(pattern).test(commit.author.github_login))) {
         return { commit, status: 'PASS', reason: `Service Account match: ${pattern}` };
       }
     }
@@ -38,25 +46,38 @@ export class Evaluator {
       return { commit, status: 'FAIL', reason: 'No associated Pull Request found.' };
     }
 
-    const prCommits = await this.github.getPRCommits(prNumber);
-    const prDates = prCommits.map((c: any) => new Date(c.commit.author?.date || c.commit.committer?.date || 0).getTime());
+    const pr_details = await this.github.getPRFullDetails(prNumber);
+    if (!pr_details) {
+      return { commit, status: 'FAIL', reason: `Could not fetch details for PR #${prNumber}.`, associated_pr_number: prNumber };
+    }
+
+    const prDates = pr_details.commits.map(c => c.date.getTime());
     const latestPRCommitTime = Math.max(...prDates);
 
-    const reviews = await this.github.getPRReviews(prNumber);
-    const independentApproval = reviews.find((review: any) => {
-      if (review.state !== 'APPROVED' || !review.user) return false;
-      
-      const isIndependent = review.user.login !== commit.author;
-      const approvalDate = review.submitted_at ? new Date(review.submitted_at) : null;
-      const isApprovedAfterCode = approvalDate ? approvalDate.getTime() > latestPRCommitTime : false;
+    const independentApproval = pr_details.approvals.find(approval => {
+      const isIndependent = approval.user.github_login !== commit.author.github_login;
+      const approvalTime = new Date(approval.timestamp).getTime();
+      const isApprovedAfterCode = approvalTime > latestPRCommitTime;
       
       return isIndependent && isApprovedAfterCode;
     });
 
     if (independentApproval) {
-      return { commit, status: 'PASS', reason: `PR #${prNumber} approved by ${independentApproval.user?.login} after latest PR commit.`, prNumber };
+      return { 
+        commit, 
+        status: 'PASS', 
+        reason: `PR #${prNumber} approved by ${independentApproval.user.github_login} after latest PR commit.`, 
+        associated_pr_number: prNumber,
+        pr_details
+      };
     }
 
-    return { commit, status: 'FAIL', reason: `PR #${prNumber} does not have an independent approval after the latest commit in the PR.`, prNumber };
+    return { 
+      commit, 
+      status: 'FAIL', 
+      reason: `PR #${prNumber} does not have an independent approval after the latest commit in the PR.`, 
+      associated_pr_number: prNumber,
+      pr_details
+    };
   }
 }

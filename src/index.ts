@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { loadConfig } from './config';
-import { getCommits } from './git';
+import { getCommits, resolveSHA } from './git';
 import { GitHubClient } from './github';
 import { Evaluator } from './evaluator';
 import { generateJsonReport } from './reporter';
@@ -21,6 +21,9 @@ async function main() {
     console.log(`Analyzing repository: ${repoPath}`);
     console.log(`Range: ${config.baseTag || 'Repository Start'} to ${config.currentTag}`);
 
+    const baseSha = resolveSHA(config.baseTag, repoPath);
+    const currentSha = resolveSHA(config.currentTag, repoPath);
+
     const commits = getCommits(config.baseTag, config.currentTag, repoPath);
     console.log(`Found ${commits.length} commits.`);
 
@@ -36,7 +39,7 @@ async function main() {
 
     console.log(`\nOverall Status: ${overallStatus}`);
 
-    generateJsonReport(results, config.currentTag);
+    generateJsonReport(results, config, baseSha, currentSha);
 
     if (anyFailed) {
       console.error('\nControl check failed! Some commits do not adhere to the four-eyes principle.');

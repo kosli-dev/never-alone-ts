@@ -1,5 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
+import { PRDetails, UserIdentity } from './types';
 
 const ThrottledOctokit = Octokit.plugin(throttling as any);
 
@@ -33,7 +34,7 @@ export class GitHubClient {
 
   async findPRForCommit(sha: string): Promise<number | undefined> {
     try {
-      const q = `is:pr is:merged sha:${sha}`;
+      const q = `is:pr is:merged sha:${sha} repo:${this.owner}/${this.repo}`;
       const response = await this.octokit.search.issuesAndPullRequests({ q });
       
       if (response.data.total_count > 0) {
@@ -41,37 +42,75 @@ export class GitHubClient {
       }
       return undefined;
     } catch (error) {
-      // If we already handled the rate limit via throttling, we shouldn't reach here unless all retries failed
       console.error(`Error searching PR for commit ${sha}: ${error}`);
       return undefined;
     }
   }
 
-  async getPRReviews(prNumber: number) {
+  async getPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
     try {
-      const response = await this.octokit.pulls.listReviews({
-        owner: this.owner,
-        repo: this.repo,
-        pull_number: prNumber,
-      });
-      return response.data;
+      const [pr, reviews, commits] = await Promise.all([
+        this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
+        this.octokit.pulls.listReviews({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
+        this.octokit.pulls.listCommits({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
+      ]);
+
+      return {
+        number: prNumber,
+        url: pr.data.html_url,
+        title: pr.data.title,
+        author: {
+          github_login: pr.data.user?.login,
+          github_id: pr.data.user?.id,
+          html_url: pr.data.user?.html_url,
+        },
+        state: pr.data.state,
+        merged_at: pr.data.merged_at || null,
+        approvals: reviews.data
+          .filter((r: any) => r.state === 'APPROVED')
+          .map((r: any) => ({
+            user: {
+              github_login: r.user?.login,
+              github_id: r.user?.id,
+              html_url: r.user?.html_url,
+            },
+            timestamp: r.submitted_at,
+          })),
+        commits: commits.data.map((c: any) => ({
+          sha: c.sha,
+          parent_shas: c.parents.map((p: any) => p.sha),
+          author: {
+            git_name: c.commit.author?.name,
+            git_email: c.commit.author?.email,
+            github_login: c.author?.login,
+            github_id: c.author?.id,
+            html_url: c.author?.html_url,
+          },
+          date: new Date(c.commit.author?.date || 0),
+          message: c.commit.message,
+        })),
+      };
     } catch (error) {
-      console.error(`Error fetching reviews for PR #${prNumber}: ${error}`);
-      return [];
+      console.error(`Error fetching full details for PR #${prNumber}: ${error}`);
+      return undefined;
     }
   }
 
-  async getPRCommits(prNumber: number) {
+  async getCommitDetails(sha: string): Promise<UserIdentity | undefined> {
     try {
-      const response = await this.octokit.pulls.listCommits({
+      const response = await this.octokit.repos.getCommit({
         owner: this.owner,
         repo: this.repo,
-        pull_number: prNumber,
+        ref: sha,
       });
-      return response.data;
+      return {
+        github_login: response.data.author?.login,
+        github_id: response.data.author?.id,
+        html_url: response.data.author?.html_url,
+      };
     } catch (error) {
-      console.error(`Error fetching commits for PR #${prNumber}: ${error}`);
-      return [];
+      console.error(`Error fetching commit details for ${sha}: ${error}`);
+      return undefined;
     }
   }
 }

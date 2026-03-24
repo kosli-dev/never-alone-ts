@@ -3,17 +3,21 @@ import { CommitInfo } from './types';
 
 export function getCommits(baseTag: string, currentTag: string, repoPath: string = process.cwd()): CommitInfo[] {
   const range = baseTag ? `${baseTag}..${currentTag}` : currentTag;
-  const command = `git log ${range} --first-parent --pretty="format:%H||%an||%aI||%s"`;
+  const command = `git log ${range} --first-parent --pretty="format:%H||%P||%an||%ae||%aI||%s"`;
   
   try {
     const output = execSync(command, { encoding: 'utf8', cwd: repoPath });
     if (!output.trim()) return [];
     
     return output.trim().split('\n').map(line => {
-      const [sha, author, dateStr, message] = line.split('||');
+      const [sha, parents, name, email, dateStr, message] = line.split('||');
       return {
         sha,
-        author,
+        parent_shas: parents ? parents.split(' ') : [],
+        author: {
+          git_name: name,
+          git_email: email,
+        },
         date: new Date(dateStr),
         message,
       };
@@ -23,6 +27,17 @@ export function getCommits(baseTag: string, currentTag: string, repoPath: string
     throw error;
   }
 }
+
+export function resolveSHA(ref: string, repoPath: string = process.cwd()): string | undefined {
+  if (!ref) return undefined;
+  try {
+    return execSync(`git rev-parse ${ref}`, { encoding: 'utf8', cwd: repoPath }).trim();
+  } catch (error) {
+    console.error(`Error resolving SHA for ${ref}: ${error}`);
+    return undefined;
+  }
+}
+
 
 export function getChangedFiles(sha: string, repoPath: string = process.cwd()): string[] {
   const command = `git show --name-only --pretty="format:" ${sha}`;
