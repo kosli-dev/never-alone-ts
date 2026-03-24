@@ -93,6 +93,8 @@ npx scr-verify --repo /path/to/your/repository
 
 The tool will generate a report file named `att_report_<CURRENT_TAG>.json` in the root directory. If any commit fails the evaluation, the tool will exit with a non-zero status code (`1`).
 
+Example report: [`examples/att_report_v2.11.46.json`](examples/att_report_v2.11.46.json)
+
 ## Development
 
 ### Running Tests
