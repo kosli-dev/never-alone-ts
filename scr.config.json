@@ -9,11 +9,8 @@
       "docs/release-notes.md"
     ],
     "fileNames": [
-      "pom.xml",
       "README.md",
-      ".gitignore",
-      "package.json",
-      "package-lock.json"
+      ".gitignore"
     ]
   }
 }

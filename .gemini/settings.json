@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kosli": {
+      "url": "https://kosli.mintlify.app/mcp",
+      "type": "http"
+    }
+  }
+}
