@@ -108,4 +108,60 @@ describe('Collector', () => {
 
     expect(commitData.date).toBe('2023-06-15T12:00:00.000Z');
   });
+
+  it('should preserve existing author fields when getCommitDetails returns undefined', async () => {
+    const commit: CommitInfo = {
+      sha: 'sha123',
+      parent_shas: [],
+      author: { git_name: 'Alice', git_email: 'alice@example.com' },
+      date: new Date(),
+      message: 'msg',
+    };
+
+    mockGitHub.getCommitDetails.mockResolvedValue(undefined);
+    (getChangedFiles as jest.Mock).mockReturnValue([]);
+    mockGitHub.findPRForCommit.mockResolvedValue(undefined);
+
+    const { commitData } = await collector.collectCommit(commit);
+
+    expect(commitData.author.git_name).toBe('Alice');
+    expect(commitData.author.git_email).toBe('alice@example.com');
+    expect(commitData.author.github_login).toBeUndefined();
+  });
+
+  it('should set pr_number but return undefined prDetails when getPRFullDetails fails', async () => {
+    const commit: CommitInfo = {
+      sha: 'sha123',
+      parent_shas: ['parent123'],
+      author: { git_name: 'Alice' },
+      date: new Date(),
+      message: 'msg',
+    };
+
+    (getChangedFiles as jest.Mock).mockReturnValue(['src/app.ts']);
+    mockGitHub.findPRForCommit.mockResolvedValue(42);
+    mockGitHub.getPRFullDetails.mockResolvedValue(null);
+
+    const { commitData, prDetails } = await collector.collectCommit(commit);
+
+    expect(commitData.pr_number).toBe(42);
+    expect(prDetails).toBeUndefined();
+  });
+
+  it('should return empty changed_files array when git returns nothing', async () => {
+    const commit: CommitInfo = {
+      sha: 'sha123',
+      parent_shas: [],
+      author: { git_name: 'Alice' },
+      date: new Date(),
+      message: 'msg',
+    };
+
+    (getChangedFiles as jest.Mock).mockReturnValue([]);
+    mockGitHub.findPRForCommit.mockResolvedValue(undefined);
+
+    const { commitData } = await collector.collectCommit(commit);
+
+    expect(commitData.changed_files).toEqual([]);
+  });
 });
