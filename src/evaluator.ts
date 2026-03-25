@@ -51,31 +51,49 @@ export class Evaluator {
       return { commit, status: 'FAIL', reason: `Could not fetch details for PR #${prNumber}.`, associated_pr_number: prNumber };
     }
 
-    const prDates = pr_details.commits.map(c => c.date.getTime());
-    const latestPRCommitTime = Math.max(...prDates);
+    const prCommitShas = new Set(pr_details.commits.map(c => c.sha));
+    const isMergeFromBase = (c: typeof pr_details.commits[0]) =>
+      c.parent_shas.length > 1 && c.parent_shas.some(p => !prCommitShas.has(p));
+
+    let relevantCommits = pr_details.commits;
+    let skippedMergeFromBase = 0;
+    if (this.config.behaviours.postApprovalMergeCommits === 'ignore') {
+      const filtered = pr_details.commits.filter(c => !isMergeFromBase(c));
+      if (filtered.length > 0) {
+        skippedMergeFromBase = pr_details.commits.length - filtered.length;
+        relevantCommits = filtered;
+      }
+    }
+
+    const latestPRCommitTime = Math.max(...relevantCommits.map(c => c.date.getTime()));
+    const latestRelevantSha = relevantCommits.find(c => c.date.getTime() === latestPRCommitTime)?.sha.substring(0, 7);
 
     const independentApproval = pr_details.approvals.find(approval => {
       const isIndependent = approval.user.github_login !== commit.author.github_login;
       const approvalTime = new Date(approval.timestamp).getTime();
       const isApprovedAfterCode = approvalTime > latestPRCommitTime;
-      
+
       return isIndependent && isApprovedAfterCode;
     });
 
+    const skippedNote = skippedMergeFromBase > 0
+      ? ` (skipped ${skippedMergeFromBase} post-approval merge-from-base commit(s), latest relevant commit: ${latestRelevantSha})`
+      : '';
+
     if (independentApproval) {
-      return { 
-        commit, 
-        status: 'PASS', 
-        reason: `PR #${prNumber} approved by ${independentApproval.user.github_login} after latest PR commit.`, 
+      return {
+        commit,
+        status: 'PASS',
+        reason: `PR #${prNumber} approved by ${independentApproval.user.github_login} after latest PR commit${skippedNote}.`,
         associated_pr_number: prNumber,
         pr_details
       };
     }
 
-    return { 
-      commit, 
-      status: 'FAIL', 
-      reason: `PR #${prNumber} does not have an independent approval after the latest commit in the PR.`, 
+    return {
+      commit,
+      status: 'FAIL',
+      reason: `PR #${prNumber} does not have an independent approval after the latest commit in the PR${skippedNote}.`,
       associated_pr_number: prNumber,
       pr_details
     };

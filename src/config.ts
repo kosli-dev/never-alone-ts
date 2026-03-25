@@ -22,6 +22,11 @@ export function loadConfig(repoPath: string = process.cwd()): Config {
 
   const configFile = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
+  const postApprovalMergeCommits = configFile.behaviours?.postApprovalMergeCommits ?? 'strict';
+  if (postApprovalMergeCommits !== 'strict' && postApprovalMergeCommits !== 'ignore') {
+    throw new Error(`Invalid value for behaviours.postApprovalMergeCommits: "${postApprovalMergeCommits}". Must be "strict" or "ignore".`);
+  }
+
   return {
     baseTag,
     currentTag,
@@ -31,6 +36,9 @@ export function loadConfig(repoPath: string = process.cwd()): Config {
       serviceAccounts: configFile.exemptions?.serviceAccounts || [],
       filePaths: configFile.exemptions?.filePaths || [],
       fileNames: configFile.exemptions?.fileNames || [],
+    },
+    behaviours: {
+      postApprovalMergeCommits,
     },
   };
 }

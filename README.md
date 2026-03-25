@@ -47,10 +47,13 @@ Create a `.env` file in the root directory (see `.env.example` for a template):
 
 ### 2. Configuration File (`scr.config.json`)
 
-Define exemptions in a `scr.config.json` file in the root directory:
+Define exemptions and behavioural settings in a `scr.config.json` file in the root directory:
 
 ```json
 {
+  "behaviours": {
+    "postApprovalMergeCommits": "strict"
+  },
   "exemptions": {
     "serviceAccounts": ["svc_.*", "bot-account"],
     "filePaths": ["docs/release-notes.md"],
@@ -58,6 +61,19 @@ Define exemptions in a `scr.config.json` file in the root directory:
   }
 }
 ```
+
+#### Behaviours
+
+| Key | Values | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `postApprovalMergeCommits` | `strict`, `ignore` | `strict` | Controls how merge-from-base commits (e.g. `Merge branch 'main' into feature-x`) are treated when checking approval timing. See below. |
+
+**`postApprovalMergeCommits`**
+
+When a developer syncs their feature branch with the base branch after receiving approval, the resulting merge commit technically post-dates the approval. This is a common workflow that does not introduce new unreviewed code — the merged content was already approved on the base branch.
+
+- `strict` — any commit pushed after the last approval causes a FAIL, including merge-from-base commits.
+- `ignore` — merge-from-base commits (multi-parent commits where at least one parent originates from outside the PR) are excluded when determining the latest commit timestamp for approval timing. Excluded commits are still recorded in the report for auditability.
 
 ## Usage
 

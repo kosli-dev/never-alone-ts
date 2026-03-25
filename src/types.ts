@@ -8,6 +8,9 @@ export interface Config {
     filePaths: string[];
     fileNames: string[];
   };
+  behaviours: {
+    postApprovalMergeCommits: 'strict' | 'ignore';
+  };
 }
 
 export interface UserIdentity {
