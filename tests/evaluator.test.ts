@@ -1,24 +1,12 @@
-import { Evaluator } from '../src/evaluator';
-import { Config, CommitInfo } from '../src/types';
-import { getChangedFiles, isMergeCommit } from '../src/git';
+import { Collector } from '../src/evaluator';
+import { CommitInfo } from '../src/types';
+import { getChangedFiles } from '../src/git';
 import { GitHubClient } from '../src/github';
 
 jest.mock('../src/git');
 
-describe('Evaluator', () => {
-  const mockConfig: Config = {
-    baseTag: 'v1.0.0',
-    currentTag: 'v1.1.0',
-    githubRepository: 'owner/repo',
-    githubToken: 'token',
-    exemptions: {
-      serviceAccounts: ['svc_.*'],
-      filePaths: ['docs/release-notes.md'],
-      fileNames: ['README.md'],
-    },
-  };
-
-  let evaluator: Evaluator;
+describe('Collector', () => {
+  let collector: Collector;
   let mockGitHub: any;
 
   beforeEach(() => {
@@ -26,101 +14,98 @@ describe('Evaluator', () => {
     mockGitHub = {
       findPRForCommit: jest.fn(),
       getPRFullDetails: jest.fn(),
-      getCommitDetails: jest.fn(),
+      getCommitDetails: jest.fn().mockResolvedValue({}),
     };
-    evaluator = new Evaluator(mockConfig, mockGitHub as unknown as GitHubClient);
-    mockGitHub.getCommitDetails.mockResolvedValue({});
+    collector = new Collector(mockGitHub as unknown as GitHubClient);
   });
 
-  it('should pass if commit is from a service account', async () => {
+  it('should collect commit data with changed files and no PR', async () => {
     const commit: CommitInfo = {
       sha: 'sha123',
       parent_shas: ['parent123'],
-      author: { git_name: 'svc_deployer' },
-      date: new Date(),
-      message: 'msg',
+      author: { git_name: 'Alice' },
+      date: new Date('2023-01-01T10:00:00Z'),
+      message: 'feat: add feature',
     };
 
-    const result = await evaluator.evaluateCommit(commit);
-    expect(result.status).toBe('PASS');
-    expect(result.reason).toContain('Service Account');
-  });
-
-  it('should pass if all changed files are exempted', async () => {
-    const commit: CommitInfo = {
-      sha: 'sha123',
-      parent_shas: ['parent123'],
-      author: { git_name: 'human' },
-      date: new Date(),
-      message: 'msg',
-    };
-
-    (getChangedFiles as jest.Mock).mockReturnValue(['README.md', 'docs/release-notes.md']);
-    
-    const result = await evaluator.evaluateCommit(commit);
-    expect(result.status).toBe('PASS');
-    expect(result.reason).toContain('exempted');
-  });
-
-  it('should fail if any changed file is not exempted', async () => {
-    const commit: CommitInfo = {
-      sha: 'sha123',
-      parent_shas: ['parent123'],
-      author: { git_name: 'human' },
-      date: new Date(),
-      message: 'msg',
-    };
-
-    (getChangedFiles as jest.Mock).mockReturnValue(['README.md', 'src/app.ts']);
-    (isMergeCommit as jest.Mock).mockReturnValue(false);
+    (getChangedFiles as jest.Mock).mockReturnValue(['src/app.ts']);
     mockGitHub.findPRForCommit.mockResolvedValue(undefined);
-    
-    const result = await evaluator.evaluateCommit(commit);
-    expect(result.status).toBe('FAIL');
+
+    const { commitData, prDetails } = await collector.collectCommit(commit);
+
+    expect(commitData.sha).toBe('sha123');
+    expect(commitData.changed_files).toEqual(['src/app.ts']);
+    expect(commitData.pr_number).toBeUndefined();
+    expect(prDetails).toBeUndefined();
   });
 
-  it('should pass if commit is a merge commit', async () => {
+  it('should collect commit data with PR details', async () => {
     const commit: CommitInfo = {
       sha: 'sha123',
-      parent_shas: ['parent1', 'parent2'],
-      author: { git_name: 'human' },
+      parent_shas: ['parent123'],
+      author: { git_name: 'Alice', github_login: 'alice' },
+      date: new Date('2023-01-01T10:00:00Z'),
+      message: 'feat: add feature',
+    };
+
+    const mockPR = {
+      number: 42,
+      url: 'https://github.com/owner/repo/pull/42',
+      title: 'Add feature',
+      author: { github_login: 'alice' },
+      state: 'closed',
+      merged_at: '2023-01-01T11:00:00Z',
+      approvals: [{ user: { github_login: 'bob' }, timestamp: '2023-01-01T10:30:00Z' }],
+      commits: [{ sha: 'sha123', parent_shas: ['parent123'], author: { github_login: 'alice' }, date: new Date('2023-01-01T10:00:00Z'), message: 'feat: add feature' }],
+    };
+
+    (getChangedFiles as jest.Mock).mockReturnValue(['src/app.ts']);
+    mockGitHub.findPRForCommit.mockResolvedValue(42);
+    mockGitHub.getPRFullDetails.mockResolvedValue(mockPR);
+
+    const { commitData, prDetails } = await collector.collectCommit(commit);
+
+    expect(commitData.pr_number).toBe(42);
+    expect(prDetails).toEqual(mockPR);
+  });
+
+  it('should enrich author with GitHub identity', async () => {
+    const commit: CommitInfo = {
+      sha: 'sha123',
+      parent_shas: ['parent123'],
+      author: { git_name: 'Alice' },
       date: new Date(),
       message: 'msg',
     };
 
-    (getChangedFiles as jest.Mock).mockReturnValue(['src/app.ts']);
-    (isMergeCommit as jest.Mock).mockReturnValue(true);
-    
-    const result = await evaluator.evaluateCommit(commit);
-    expect(result.status).toBe('PASS');
-    expect(result.reason).toContain('Merge commit');
+    mockGitHub.getCommitDetails.mockResolvedValue({
+      github_login: 'alice-gh',
+      github_id: 12345,
+      html_url: 'https://github.com/alice-gh',
+    });
+    (getChangedFiles as jest.Mock).mockReturnValue([]);
+    mockGitHub.findPRForCommit.mockResolvedValue(undefined);
+
+    const { commitData } = await collector.collectCommit(commit);
+
+    expect(commitData.author.github_login).toBe('alice-gh');
+    expect(commitData.author.github_id).toBe(12345);
   });
 
-  it('should pass if PR is independently approved after the latest PR commit', async () => {
-    const commitDate = new Date('2023-01-01T10:00:00Z');
-    const approvalDate = new Date('2023-01-01T11:00:00Z');
+  it('should serialize date as ISO string', async () => {
     const commit: CommitInfo = {
       sha: 'sha123',
-      parent_shas: ['parent123'],
-      author: { git_name: 'author1', github_login: 'gh-author1' },
-      date: commitDate,
+      parent_shas: [],
+      author: { git_name: 'Alice' },
+      date: new Date('2023-06-15T12:00:00Z'),
       message: 'msg',
     };
 
-    (getChangedFiles as jest.Mock).mockReturnValue(['src/app.ts']);
-    (isMergeCommit as jest.Mock).mockReturnValue(false);
-    mockGitHub.findPRForCommit.mockResolvedValue(123);
-    mockGitHub.getPRFullDetails.mockResolvedValue({
-      number: 123,
-      commits: [{ sha: 'sha123', parent_shas: ['parent123'], date: commitDate }],
-      approvals: [{ user: { github_login: 'gh-approver1' }, timestamp: approvalDate.toISOString() }]
-    });
-    
-    const result = await evaluator.evaluateCommit(commit);
-    expect(result.status).toBe('PASS');
-    expect(result.associated_pr_number).toBe(123);
+    (getChangedFiles as jest.Mock).mockReturnValue([]);
+    mockGitHub.findPRForCommit.mockResolvedValue(undefined);
+
+    const { commitData } = await collector.collectCommit(commit);
+
+    expect(commitData.date).toBe('2023-06-15T12:00:00.000Z');
   });
-
 });
-
-

@@ -1,59 +1,68 @@
 # Source Code Review Verification Tool
 
-This tool verifies adherence to the "four-eyes principle" for code changes within a specified release range. It analyzes the git history between two tags, evaluates each commit against a set of rules (service accounts, exempted files, merge commits, or PR approvals), and generates a detailed JSON report.
+This tool verifies adherence to the "four-eyes principle" for code changes within a specified release range. It is split into two parts:
 
-## Features
+1. **Collector** — a TypeScript CLI that fetches commit and PR data from git and the GitHub API, and writes a self-contained JSON attestation file.
+2. **Policy** — a Rego policy (`four-eyes.rego`) that evaluates the attestation data and produces pass/fail results and violation messages.
 
-- **Automated Commit Retrieval:** Fetches linear history from a specified release branch.
-- **Rule-Based Evaluation:**
-  - **Service Accounts:** Exempts commits from known automation accounts.
-  - **Exempted Files:** Skips commits that only modify specific files (e.g., `package.json`, `README.md`).
-  - **Merge Commits:** Automatically passes standard GitHub merge commits.
-  - **PR Verification:** Ensures every other commit is linked to a merged Pull Request with at least one independent approval before the commit date.
-- **Detailed Reporting:** Generates a JSON report with the status and reasoning for every commit.
+The attestation file is attached to a Kosli trail; the policy is evaluated with `kosli evaluate trail`.
+
+## How it works
+
+```
+┌─────────────────────────┐       ┌──────────────────────────────┐
+│  never-alone (collector) │──────▶│  att_data_<tag>.json         │
+│  npm start               │       │  (attested to Kosli trail)   │
+└─────────────────────────┘       └──────────────┬───────────────┘
+                                                  │
+                                  ┌───────────────▼───────────────┐
+                                  │  kosli evaluate trail          │
+                                  │  --policy-file four-eyes.rego  │
+                                  └───────────────────────────────┘
+```
+
+The collector gathers facts (commit authors, changed files, PR approvals, commit timestamps). All evaluation logic lives in `four-eyes.rego`, so rules can be updated independently of the data collection code.
+
+## Evaluation rules
+
+Each commit is checked in order; the first matching rule determines its status:
+
+1. **Service account** — commit author matches a service account pattern → PASS
+2. **Exempted files** — all changed files are exempted by path or filename → PASS
+3. **Merge commit** — GitHub merge commit (multiple parents or `Merge pull request #` message) → PASS
+4. **PR approval** — commit is linked to a merged PR with at least one independent approval after the latest code commit → PASS / else FAIL
 
 ## Prerequisites
 
-- **Node.js**: Version 18 or higher.
-- **Git**: Installed and available in the system path.
-- **GitHub Token**: A Personal Access Token (PAT) with `repo` scope to read PRs and reviews.
+- **Node.js** 18+
+- **Git** available in PATH
+- **GitHub Token** — Personal Access Token with `repo` scope
+- **Kosli CLI** — for attesting and evaluating ([installation](https://docs.kosli.com/getting_started/))
 
 ## Installation
 
-1.  Clone the repository.
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Build the project:
-    ```bash
-    npm run build
-    ```
+```bash
+npm install
+npm run build
+```
 
 ## Configuration
 
-The tool requires both environment variables and a configuration file.
-
 ### 1. Environment Variables
-
-Create a `.env` file in the root directory (see `.env.example` for a template):
 
 | Variable | Description |
 | :--- | :--- |
-| `BASE_TAG` | The starting git tag (e.g., `v1.0.0`). Leave empty to start from the repository's beginning. |
-| `CURRENT_TAG` | The ending git tag/release being evaluated (e.g., `v1.1.0`). |
-| `GITHUB_REPOSITORY` | The owner and repository name (e.g., `owner/repo`). |
-| `GITHUB_TOKEN` | Your GitHub Personal Access Token. |
+| `BASE_TAG` | Starting git tag. Leave empty to start from the first commit. |
+| `CURRENT_TAG` | Ending git tag (the release being evaluated). |
+| `GITHUB_REPOSITORY` | Repository in `owner/repo` format. |
+| `GITHUB_TOKEN` | GitHub Personal Access Token. |
 
-### 2. Configuration File (`scr.config.json`)
+### 2. `scr.config.json`
 
-Define exemptions and behavioural settings in a `scr.config.json` file in the root directory:
+Place `scr.config.json` in the root of the repository being scanned:
 
 ```json
 {
-  "behaviours": {
-    "postApprovalMergeCommits": "strict"
-  },
   "exemptions": {
     "serviceAccounts": ["svc_.*", "bot-account"],
     "filePaths": ["docs/release-notes.md"],
@@ -62,70 +71,91 @@ Define exemptions and behavioural settings in a `scr.config.json` file in the ro
 }
 ```
 
-#### Behaviours
-
-| Key | Values | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `postApprovalMergeCommits` | `strict`, `ignore` | `strict` | Controls how merge-from-base commits (e.g. `Merge branch 'main' into feature-x`) are treated when checking approval timing. See below. |
-
-**`postApprovalMergeCommits`**
-
-When a developer syncs their feature branch with the base branch after receiving approval, the resulting merge commit technically post-dates the approval. This is a common workflow that does not introduce new unreviewed code — the merged content was already approved on the base branch.
-
-- `strict` — any commit pushed after the last approval causes a FAIL, including merge-from-base commits.
-- `ignore` — merge-from-base commits (multi-parent commits where at least one parent originates from outside the PR) are excluded when determining the latest commit timestamp for approval timing. Excluded commits are still recorded in the report for auditability.
+The exemptions are embedded in the attestation output and read by the Rego policy at evaluation time.
 
 ## Usage
 
-After building the project, run the tool using:
-
-```bash
-npm start
-```
-
-### Specifying a Repository Path
-
-You can specify the path to the repository to be scanned using the `--repo` argument:
+### 1. Collect data
 
 ```bash
 npm start -- --repo /path/to/your/repository
 ```
 
-(Note: The extra `--` is needed when using `npm start` to pass arguments to the underlying script).
+This produces `att_data_<CURRENT_TAG>.json` in the working directory.
 
-Or, if using `node` directly:
-
-```bash
-node dist/index.js --repo /path/to/your/repository
-```
-
-Or, if installed as a dependency:
+### 2. Attest to a Kosli trail
 
 ```bash
-npx scr-verify --repo /path/to/your/repository
+kosli attest generic \
+  --attestation-name scr-data \
+  --attachments att_data_v1.2.3.json \
+  --trail release-v1.2.3
 ```
 
-### Output
+### 3. Evaluate
 
-The tool will generate a report file named `att_report_<CURRENT_TAG>.json` in the root directory. If any commit fails the evaluation, the tool will exit with a non-zero status code (`1`).
+```bash
+kosli evaluate trail release-v1.2.3 \
+  --policy-file four-eyes.rego \
+  --output json
+```
 
-Example report: [`examples/att_report_v2.11.46.json`](examples/att_report_v2.11.46.json)
+Exit code `0` = all commits comply. Exit code `1` = violations found.
+
+### 4. (Optional) Record the evaluation result
+
+```bash
+kosli attest generic \
+  --attestation-name four-eyes-result \
+  --policy-file four-eyes.rego \
+  --trail release-v1.2.3
+```
+
+## Policy: `four-eyes.rego`
+
+The policy implements the four-eyes evaluation rules in Rego. It reads exemption configuration from the attested data so that `scr.config.json` remains the single source of truth.
+
+### Behaviour: `post_approval_merge_commits`
+
+A constant at the top of `four-eyes.rego` controls how merge-from-base commits are handled:
+
+```rego
+post_approval_merge_commits := "ignore"  # or "strict"
+```
+
+| Value | Behaviour |
+| :--- | :--- |
+| `ignore` | Merge-from-base commits (e.g. `Merge branch 'main' into feature-x`) are excluded from the approval timing check. Such commits only bring in content already reviewed on the base branch. |
+| `strict` | Any commit after the last approval causes a failure, including merge-from-base commits. |
+
+### Verifying the input shape
+
+Use `--show-input` to inspect the exact data structure passed to the policy:
+
+```bash
+kosli evaluate trail release-v1.2.3 \
+  --policy-file four-eyes.rego \
+  --show-input \
+  --output json
+```
+
+The attestation path in the policy (`input.trail.attestations["scr-data"].payload`) may need adjusting based on your Kosli setup.
 
 ## Development
 
-### Running Tests
-
-To run the unit test suite:
+### Running tests
 
 ```bash
 npm test
 ```
 
-### Project Structure
+### Project structure
 
-- `src/index.ts`: Orchestration logic and entry point.
-- `src/evaluator.ts`: Core "four-eyes" evaluation engine.
-- `src/git.ts`: Git command wrappers.
-- `src/github.ts`: GitHub API client.
-- `src/reporter.ts`: JSON report generation.
-- `tests/`: Comprehensive Jest unit tests.
+- `src/index.ts` — entry point and orchestration
+- `src/evaluator.ts` — `Collector` class: fetches commit and PR data
+- `src/git.ts` — git command wrappers
+- `src/github.ts` — GitHub API client
+- `src/reporter.ts` — writes the attestation JSON file
+- `src/config.ts` — loads configuration from env vars and `scr.config.json`
+- `four-eyes.rego` — Rego policy for evaluating four-eyes compliance
+- `tests/` — Jest unit tests

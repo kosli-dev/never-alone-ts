@@ -8,9 +8,6 @@ export interface Config {
     filePaths: string[];
     fileNames: string[];
   };
-  behaviours: {
-    postApprovalMergeCommits: 'strict' | 'ignore';
-  };
 }
 
 export interface UserIdentity {
@@ -29,6 +26,16 @@ export interface CommitInfo {
   message: string;
 }
 
+export interface CommitData {
+  sha: string;
+  parent_shas: string[];
+  author: UserIdentity;
+  date: string;
+  message: string;
+  changed_files: string[];
+  pr_number?: number;
+}
+
 export interface PRDetails {
   number: number;
   url: string;
@@ -43,38 +50,22 @@ export interface PRDetails {
   commits: CommitInfo[];
 }
 
-export interface EvaluationResult {
-  commit: CommitInfo;
-  status: 'PASS' | 'FAIL';
-  reason: string;
-  associated_pr_number?: number;
-  pr_details?: PRDetails;
-}
-
-export interface StructuredReport {
-  report_info: {
-    repository: string;
-    range: {
-      base: string;
-      base_sha?: string;
-      current: string;
-      current_sha?: string;
-    };
-    generated_at: string;
-    overall_status: 'PASSED' | 'FAILED';
+export interface AttestationData {
+  repository: string;
+  range: {
+    base: string;
+    base_sha?: string;
+    current: string;
+    current_sha?: string;
   };
-  main_branch_commits: {
-    sha: string;
-    parent_shas: string[];
-    author: UserIdentity;
-    date: string;
-    message: string;
-    evaluation: {
-      status: 'PASS' | 'FAIL';
-      reason: string;
+  generated_at: string;
+  config: {
+    exemptions: {
+      serviceAccounts: string[];
+      filePaths: string[];
+      fileNames: string[];
     };
-    associated_pr_number?: number;
-  }[];
+  };
+  commits: CommitData[];
   pull_requests: Record<string, PRDetails>;
 }
-
