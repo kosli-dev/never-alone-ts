@@ -15,4 +15,10 @@ kosli attest generic \
 
 kosli evaluate trail ${GIT_SHA}$TRUNKATED_DATE\
   --policy four-eyes.rego \
-  --output json
+  --output json > eval-result.json
+
+kosli attest generic \
+  --name four-eyes-result \
+  --attachments four-eyes.rego \
+  --user-data eval-result.json \
+  --trail ${GIT_SHA}$TRUNKATED_DATE

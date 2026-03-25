@@ -1,16 +1,32 @@
 {
-  "report_info": {
-    "repository": "kosli-dev/cli",
-    "range": {
-      "base": "v2.11.44",
-      "base_sha": "032f2b640fe22edcaaa0bf759db57791469d3188",
-      "current": "v2.11.46",
-      "current_sha": "c8e6eafb6c71bf37258feeba96cd3a6284d73cc2"
-    },
-    "generated_at": "2026-03-24T20:37:31.943Z",
-    "overall_status": "FAILED"
+  "repository": "kosli-dev/cli",
+  "range": {
+    "base": "v2.11.44",
+    "base_sha": "032f2b640fe22edcaaa0bf759db57791469d3188",
+    "current": "v2.11.46",
+    "current_sha": "c8e6eafb6c71bf37258feeba96cd3a6284d73cc2"
   },
-  "main_branch_commits": [
+  "generated_at": "2026-03-25T15:26:59.561Z",
+  "config": {
+    "exemptions": {
+      "serviceAccounts": [
+        "svc_.*",
+        "CPTCLDEG.*",
+        "app-repo-plugin-default"
+      ],
+      "filePaths": [
+        "docs/release-notes.md"
+      ],
+      "fileNames": [
+        "pom.xml",
+        "README.md",
+        ".gitignore",
+        "package.json",
+        "package-lock.json"
+      ]
+    }
+  },
+  "commits": [
     {
       "sha": "213e76758a49671ab3d72a04f2ff1aa4a50f7634",
       "parent_shas": [
@@ -25,11 +41,13 @@
       },
       "date": "2026-03-02T16:16:25.000Z",
       "message": "update list and get repo cmds to match updated API response (#672)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #672 approved by FayeSGW after latest PR commit."
-      },
-      "associated_pr_number": 672
+      "changed_files": [
+        "cmd/kosli/getRepo.go",
+        "cmd/kosli/getRepo_test.go",
+        "cmd/kosli/listRepos.go",
+        "cmd/kosli/listRepos_test.go"
+      ],
+      "pr_number": 672
     },
     {
       "sha": "5a0f3c00b525c1c08c8995fed18549d0f4adb119",
@@ -45,11 +63,18 @@
       },
       "date": "2026-02-27T09:59:53.000Z",
       "message": "add get repo command (#661)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #661 approved by ToreMerkely after latest PR commit."
-      },
-      "associated_pr_number": 661
+      "changed_files": [
+        "Dockerfile",
+        "cmd/kosli/get.go",
+        "cmd/kosli/getRepo.go",
+        "cmd/kosli/getRepo_test.go",
+        "cmd/kosli/listRepos.go",
+        "cmd/kosli/listRepos_test.go",
+        "go.mod",
+        "go.sum",
+        "internal/requests/requests.go"
+      ],
+      "pr_number": 661
     },
     {
       "sha": "167ed936f4fe57596a2a736de8a76e374deeab89",
@@ -65,11 +90,10 @@
       },
       "date": "2026-02-26T10:18:55.000Z",
       "message": "Fix authentication error with dockerAuthConfig (#669)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #669 approved by sami-alajrami after latest PR commit."
-      },
-      "associated_pr_number": 669
+      "changed_files": [
+        "internal/digest/digest.go"
+      ],
+      "pr_number": 669
     },
     {
       "sha": "030cc31d84dfdba5d2e0916213be61ab04740e27",
@@ -85,11 +109,11 @@
       },
       "date": "2026-02-24T09:23:59.000Z",
       "message": "fix: escape parsing of angle-brackets in Mintlify doc gen (#668)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #668 approved by jumboduck after latest PR commit."
-      },
-      "associated_pr_number": 668
+      "changed_files": [
+        "internal/docgen/mintlify.go",
+        "internal/docgen/mintlify_test.go"
+      ],
+      "pr_number": 668
     },
     {
       "sha": "2d1b55b3d20ca999e521a26bd4859bfed851349a",
@@ -105,11 +129,12 @@
       },
       "date": "2026-02-23T14:34:46.000Z",
       "message": "Remove migration files from docs (#666)",
-      "evaluation": {
-        "status": "FAIL",
-        "reason": "PR #666 does not have an independent approval after the latest commit in the PR."
-      },
-      "associated_pr_number": 666
+      "changed_files": [
+        "docs.kosli.com/content/migrations/_index.md",
+        "docs.kosli.com/content/migrations/cli_v1_to_v2.md",
+        "docs.kosli.com/content/migrations/migrate_to_flows_with_trails.md"
+      ],
+      "pr_number": 666
     },
     {
       "sha": "6285697f5a31a801f1e77a2a8d78487b413ea066",
@@ -125,11 +150,10 @@
       },
       "date": "2026-02-23T14:20:41.000Z",
       "message": "Change PR number in test (#667)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #667 approved by sami-alajrami after latest PR commit."
-      },
-      "associated_pr_number": 667
+      "changed_files": [
+        "internal/github/github_test.go"
+      ],
+      "pr_number": 667
     },
     {
       "sha": "914c5de5f0551cf9466aa95645382403befa31a4",
@@ -145,11 +169,11 @@
       },
       "date": "2026-02-23T13:36:49.000Z",
       "message": "Fix some links in docs (#665)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #665 approved by sami-alajrami after latest PR commit."
-      },
-      "associated_pr_number": 665
+      "changed_files": [
+        "docs.kosli.com/content/getting_started/flows.md",
+        "docs.kosli.com/content/getting_started/service-accounts.md"
+      ],
+      "pr_number": 665
     },
     {
       "sha": "7ed1b9390a70c3c0eb4d76733f7869b7514b346b",
@@ -165,11 +189,11 @@
       },
       "date": "2026-02-23T09:55:32.000Z",
       "message": "docs: add release guide (#664)",
-      "evaluation": {
-        "status": "PASS",
-        "reason": "PR #664 approved by JonJagger after latest PR commit."
-      },
-      "associated_pr_number": 664
+      "changed_files": [
+        "dev-guide.md",
+        "release-guide.md"
+      ],
+      "pr_number": 664
     }
   ],
   "pull_requests": {

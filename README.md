@@ -87,8 +87,8 @@ This produces `att_data_<CURRENT_TAG>.json` in the working directory.
 
 ```bash
 kosli attest generic \
-  --attestation-name scr-data \
-  --attachments att_data_v1.2.3.json \
+  --name scr-data \
+  --user-data att_data_v2.11.46.json \
   --trail release-v1.2.3
 ```
 
@@ -96,8 +96,8 @@ kosli attest generic \
 
 ```bash
 kosli evaluate trail release-v1.2.3 \
-  --policy-file four-eyes.rego \
-  --output json
+  --policy four-eyes.rego \
+  --output json > eval-result.json
 ```
 
 Exit code `0` = all commits comply. Exit code `1` = violations found.
@@ -106,8 +106,9 @@ Exit code `0` = all commits comply. Exit code `1` = violations found.
 
 ```bash
 kosli attest generic \
-  --attestation-name four-eyes-result \
-  --policy-file four-eyes.rego \
+  --name four-eyes-result \
+  --user-data eval-result.json
+  --attachment four-eyes.rego \
   --trail release-v1.2.3
 ```
 
