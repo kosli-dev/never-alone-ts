@@ -4,7 +4,7 @@ set -euo pipefail
 # ── Configuration ─────────────────────────────────────────────────────────────
 export KOSLI_ORG="sofus-test"           # Kosli organisation name
 
-KOSLI_FLOW="cli-simulation-x1"             # Flow to create and populate
+KOSLI_FLOW="cli-simulation-nobase"             # Flow to create and populate
 KOSLI_ATTESTATION_NAME="scr-data"       # Attestation name written to each trail
 
 CLEANUP="false"                          # Set to "false" to keep att_data_*.json files
@@ -67,13 +67,25 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
     --repo-root "${REPO}"
 
   # 2. Run never-alone collector
+  #    First run: provide BASE_TAG explicitly.
+  #    Subsequent runs: omit BASE_TAG and let the tool auto-resolve it from Kosli.
   echo "  Running collector..."
-  BASE_TAG="${BASE_TAG}" \
-  CURRENT_TAG="${CURRENT_TAG}" \
-  GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
-  node "${SCRIPT_DIR}/dist/index.js" \
-    --repo  "${REPO}" \
-    --config "scr.config.json"
+  if [[ $i -eq 1 ]]; then
+    BASE_TAG="${BASE_TAG}" \
+    CURRENT_TAG="${CURRENT_TAG}" \
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
+    node "${SCRIPT_DIR}/dist/index.js" \
+      --repo "${REPO}" \
+      --config "scr.config.json" \
+      --flow "${KOSLI_FLOW}"
+  else
+    CURRENT_TAG="${CURRENT_TAG}" \
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
+    node "${SCRIPT_DIR}/dist/index.js" \
+      --repo "${REPO}" \
+      --config "scr.config.json" \
+      --flow "${KOSLI_FLOW}"
+  fi
 
   # 3. Attest the collected data to the trail
   ATT_FILE="${SCRIPT_DIR}/att_data_${CURRENT_TAG}.json"
@@ -87,17 +99,25 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
   # 4. Evaluate the trail against the four-eyes policy
   EVAL_FILE="${SCRIPT_DIR}/eval_result_${CURRENT_TAG}.json"
   echo "  Evaluating trail..."
+  EVAL_EXIT=0
   kosli evaluate trail "${COMMIT_SHA}" \
     --policy "${SCRIPT_DIR}/four-eyes.rego" \
     --flow "${KOSLI_FLOW}" \
-    --output json > "${EVAL_FILE}"
+    --output json > "${EVAL_FILE}" || EVAL_EXIT=$?
 
   # 5. Attest the evaluation result (with the policy file attached for auditability)
-  echo "  Attesting evaluation result..."
+  #    Mark non-compliant when the policy found violations (exit code 1)
+  COMPLIANT_FLAG="true"
+  if [[ "${EVAL_EXIT}" -ne 0 ]]; then
+    echo "  Policy violations found — attesting as non-compliant"
+    COMPLIANT_FLAG="false"
+  fi
+  echo "  Attesting evaluation result (compliant=${COMPLIANT_FLAG})..."
   kosli attest generic \
     --name "four-eyes-result" \
     --user-data "${EVAL_FILE}" \
     --attachments "${SCRIPT_DIR}/four-eyes.rego" \
+    --compliant="${COMPLIANT_FLAG}" \
     --trail "${COMMIT_SHA}" \
     --flow "${KOSLI_FLOW}"
 

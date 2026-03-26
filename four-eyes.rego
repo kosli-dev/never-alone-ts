@@ -9,13 +9,13 @@ allow if count(violations) == 0
 # ---------------------------------------------------------------------------
 # Attestation data
 #
-# The path below assumes the attestation was recorded with:
-#   kosli attest generic --attestation-name scr-data ...
+# Generic attestation user_data is available at:
+#   input.trail.compliance_status.attestations_statuses[<name>].user_data
 #
 # Verify the exact path in your environment with:
-#   kosli evaluate trail <trail> --policy-file four-eyes.rego --show-input
+#   kosli evaluate trail <trail> --policy four-eyes.rego --show-input --output json
 # ---------------------------------------------------------------------------
-attestation := input.trail.attestations["scr-data"].payload
+attestation := input.trail.compliance_status.attestations_statuses["scr-data"].user_data
 
 # ---------------------------------------------------------------------------
 # Behaviour: post-approval merge-from-base commits
@@ -28,7 +28,7 @@ attestation := input.trail.attestations["scr-data"].payload
 # "strict" — any commit pushed after the last approval causes a failure,
 #            including merge-from-base commits.
 # ---------------------------------------------------------------------------
-post_approval_merge_commits := "ignore"
+post_approval_merge_commits := "strict"  # "ignore" or "strict"
 
 # ---------------------------------------------------------------------------
 # Helpers

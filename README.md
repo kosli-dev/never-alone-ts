@@ -107,15 +107,17 @@ This produces `att_data_<CURRENT_TAG>.json` in the working directory.
 ```bash
 kosli attest generic \
   --name scr-data \
-  --user-data att_data_v2.11.46.json \
-  --trail release-v1.2.3
+  --user-data att_data_v1.1.0.json \
+  --flow my-kosli-flow \
+  --trail release-v1.1.0
 ```
 
 ### 3. Evaluate
 
 ```bash
-kosli evaluate trail release-v1.2.3 \
+kosli evaluate trail release-v1.1.0 \
   --policy four-eyes.rego \
+  --flow my-kosli-flow \
   --output json > eval-result.json
 ```
 
@@ -123,12 +125,16 @@ Exit code `0` = all commits comply. Exit code `1` = violations found.
 
 ### 4. (Optional) Record the evaluation result
 
+Use `--compliant=false` when the policy found violations (exit code `1`):
+
 ```bash
 kosli attest generic \
   --name four-eyes-result \
-  --user-data eval-result.json
-  --attachment four-eyes.rego \
-  --trail release-v1.2.3
+  --user-data eval-result.json \
+  --attachments four-eyes.rego \
+  --compliant=false \
+  --flow my-kosli-flow \
+  --trail release-v1.1.0
 ```
 
 ## Policy: `four-eyes.rego`
@@ -159,7 +165,7 @@ kosli evaluate trail release-v1.2.3 \
   --output json
 ```
 
-The attestation path in the policy (`input.trail.attestations["scr-data"].payload`) may need adjusting based on your Kosli setup.
+Generic attestation user-data is available at `input.trail.compliance_status.attestations_statuses["scr-data"].user_data`. Use `--show-input` to verify the exact structure in your environment.
 
 ## Development
 
