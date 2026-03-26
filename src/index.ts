@@ -6,15 +6,19 @@ import { Collector } from './evaluator';
 import { generateAttestationData } from './reporter';
 import { CommitData, PRDetails } from './types';
 
+function parseArg(args: string[], flag: string): string | undefined {
+  const idx = args.indexOf(flag);
+  return idx !== -1 && args[idx + 1] ? path.resolve(args[idx + 1]) : undefined;
+}
+
 async function main() {
   try {
     const args = process.argv.slice(2);
-    const repoArgIndex = args.indexOf('--repo');
-    const repoPath = repoArgIndex !== -1 && args[repoArgIndex + 1]
-      ? path.resolve(args[repoArgIndex + 1])
-      : process.cwd();
+    const repoPath = parseArg(args, '--repo') ?? process.cwd();
+    const configPath = parseArg(args, '--config');
+    const envFile = parseArg(args, '--env-file');
 
-    const config = loadConfig(repoPath);
+    const config = loadConfig({ configPath, envFile });
     const github = new GitHubClient(config.githubRepository, config.githubToken);
     const collector = new Collector(github, repoPath);
 

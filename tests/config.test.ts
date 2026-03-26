@@ -54,6 +54,6 @@ describe('Config Loader', () => {
 
     (fs.existsSync as jest.Mock).mockReturnValue(false);
 
-    expect(() => loadConfig()).toThrow('scr.config.json file not found');
+    expect(() => loadConfig()).toThrow('scr.config.json file not found at:');
   });
 });
