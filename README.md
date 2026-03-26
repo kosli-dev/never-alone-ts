@@ -17,7 +17,7 @@ The attestation file is attached to a Kosli trail; the policy is evaluated with 
                                                   │
                                   ┌───────────────▼───────────────┐
                                   │  kosli evaluate trail          │
-                                  │  --policy-file four-eyes.rego  │
+                                  │  --policy four-eyes.rego       │
                                   └───────────────────────────────┘
 ```
 
@@ -50,12 +50,14 @@ npm run build
 
 ### 1. Environment Variables
 
-| Variable | Description |
-| :--- | :--- |
-| `BASE_TAG` | Starting git tag. Leave empty to start from the first commit. |
-| `CURRENT_TAG` | Ending git tag (the release being evaluated). |
-| `GITHUB_REPOSITORY` | Repository in `owner/repo` format. |
-| `GITHUB_TOKEN` | GitHub Personal Access Token. |
+| Variable | Required | Description |
+| :--- | :--- | :--- |
+| `CURRENT_TAG` | Yes | The release being evaluated — a git tag or commit SHA. |
+| `GITHUB_REPOSITORY` | Yes | Repository in `owner/repo` format. |
+| `GITHUB_TOKEN` | Yes | GitHub Personal Access Token with `repo` scope. |
+| `BASE_TAG` | No | Starting git tag or SHA. If omitted, the tool auto-resolves it from Kosli (requires `KOSLI_FLOW`). Falls back to the repository's first commit if nothing is found. |
+| `KOSLI_FLOW` | No | Kosli flow name to search for the previous attestation when auto-resolving `BASE_TAG`. |
+| `KOSLI_ATTESTATION_NAME` | No | Name of the attestation to look for in Kosli trails. Defaults to `scr-data`. |
 
 ### 2. `scr.config.json`
 
@@ -75,11 +77,28 @@ The exemptions are embedded in the attestation output and read by the Rego polic
 
 ## Usage
 
+### CLI flags
+
+| Flag | Description |
+| :--- | :--- |
+| `--repo <path>` | Path to the git repository to analyse. Defaults to the current directory. |
+| `--config <path>` | Path to `scr.config.json`. Defaults to `scr.config.json` in the current directory. |
+| `--env-file <path>` | Path to a `.env` file to load. Defaults to dotenv's standard behaviour. |
+| `--flow <name>` | Kosli flow name for auto-resolving `BASE_TAG`. Overrides `KOSLI_FLOW`. |
+
 ### 1. Collect data
 
+**With explicit base tag:**
 ```bash
-npm start -- --repo /path/to/your/repository
+BASE_TAG=v1.0.0 CURRENT_TAG=v1.1.0 npm start -- --repo /path/to/repo
 ```
+
+**With auto-resolved base tag:**
+```bash
+CURRENT_TAG=v1.1.0 npm start -- --repo /path/to/repo --flow my-kosli-flow
+```
+
+When `--flow` is provided and `BASE_TAG` is not set, the tool queries Kosli for the most recent commit in the git history that has a trail with the target attestation, and uses that as the base. If none is found it falls back to the repository's first commit.
 
 This produces `att_data_<CURRENT_TAG>.json` in the working directory.
 
@@ -135,7 +154,7 @@ Use `--show-input` to inspect the exact data structure passed to the policy:
 
 ```bash
 kosli evaluate trail release-v1.2.3 \
-  --policy-file four-eyes.rego \
+  --policy four-eyes.rego \
   --show-input \
   --output json
 ```
@@ -154,6 +173,8 @@ npm test
 
 - `src/index.ts` — entry point and orchestration
 - `src/evaluator.ts` — `Collector` class: fetches commit and PR data
+- `src/baseTagResolver.ts` — auto-resolves `BASE_TAG` from Kosli trail history
+- `src/kosli.ts` — `KosliClient`: shells out to the Kosli CLI to list trails
 - `src/git.ts` — git command wrappers
 - `src/github.ts` — GitHub API client
 - `src/reporter.ts` — writes the attestation JSON file
