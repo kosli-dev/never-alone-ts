@@ -9,6 +9,8 @@ const mockConfig: Config = {
   currentTag: 'v1.1.0',
   githubRepository: 'owner/repo',
   githubToken: 'token',
+  kosliFlow: '',
+  kosliAttestationName: 'scr-data',
   exemptions: {
     serviceAccounts: ['svc_.*'],
     filePaths: ['docs/release-notes.md'],

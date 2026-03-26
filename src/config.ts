@@ -15,6 +15,8 @@ export function loadConfig(options: { configPath?: string; envFile?: string } = 
   const currentTag = process.env.CURRENT_TAG || '';
   const githubRepository = process.env.GITHUB_REPOSITORY || '';
   const githubToken = process.env.GITHUB_TOKEN || '';
+  const kosliFlow = process.env.KOSLI_FLOW || '';
+  const kosliAttestationName = process.env.KOSLI_ATTESTATION_NAME || 'scr-data';
 
   if (!currentTag || !githubRepository || !githubToken) {
     throw new Error('Missing required environment variables (CURRENT_TAG, GITHUB_REPOSITORY, GITHUB_TOKEN). Please check your .env file or environment.');
@@ -31,6 +33,8 @@ export function loadConfig(options: { configPath?: string; envFile?: string } = 
     currentTag,
     githubRepository,
     githubToken,
+    kosliFlow,
+    kosliAttestationName,
     exemptions: {
       serviceAccounts: configFile.exemptions?.serviceAccounts || [],
       filePaths: configFile.exemptions?.filePaths || [],

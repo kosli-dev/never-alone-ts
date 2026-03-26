@@ -3,10 +3,24 @@ export interface Config {
   currentTag: string;
   githubRepository: string;
   githubToken: string;
+  kosliFlow: string;
+  kosliAttestationName: string;
   exemptions: {
     serviceAccounts: string[];
     filePaths: string[];
     fileNames: string[];
+  };
+}
+
+export interface KosliTrail {
+  name: string;
+  git_commit_info: {
+    sha1: string;
+  } | null;
+  compliance_status: {
+    attestations_statuses: {
+      attestation_name: string;
+    }[];
   };
 }
 
