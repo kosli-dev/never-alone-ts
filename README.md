@@ -32,6 +32,8 @@ Each commit is checked in order; the first matching rule determines its status:
 3. **Merge commit** — GitHub merge commit (multiple parents or `Merge pull request #` message) → PASS
 4. **PR approval** — commit is linked to a merged PR with at least one independent approval after the latest code commit → PASS / else FAIL
 
+For named test cases with git diagrams and expected outcomes for each rule, see [SCENARIOS.md](SCENARIOS.md).
+
 ## Prerequisites
 
 - **Node.js** 18+
@@ -166,6 +168,15 @@ kosli evaluate trail release-v1.2.3 \
 ```
 
 Generic attestation user-data is available at `input.trail.compliance_status.attestations_statuses["scr-data"].user_data`. Use `--show-input` to verify the exact structure in your environment.
+
+## Documentation
+
+| Document | Description |
+| :--- | :--- |
+| [CATALOGUE.md](CATALOGUE.md) | Full control specification: intent, data collection flow, evaluation logic, configuration reference, exemptions, limitations, failure remediation, and attestation schema. |
+| [SCENARIOS.md](SCENARIOS.md) | Named test cases with git diagrams and expected pass/fail outcomes, grouped by theme. |
+
+---
 
 ## Development
 
