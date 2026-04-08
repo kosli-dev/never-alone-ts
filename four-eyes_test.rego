@@ -41,6 +41,7 @@ approval(login, timestamp) := {"user": {"github_login": login}, "timestamp": tim
 # Service account
 # ---------------------------------------------------------------------------
 
+# Scenario 2 — Service account commit
 test_service_account_passes if {
 	c := object.union(commit("abc1234", "svc_deployer", "automated", ["src/app.ts"]), {"pr_number": null})
 	count(violations) == 0 with input as make_input([c], {})
@@ -50,16 +51,19 @@ test_service_account_passes if {
 # Exempted files
 # ---------------------------------------------------------------------------
 
+# Scenario 3 — Exempted files only
 test_exempt_filename_passes if {
 	c := commit("abc1234", "alice", "update readme", ["README.md"])
 	count(violations) == 0 with input as make_input([c], {})
 }
 
+# Scenario 3 — Exempted files only
 test_exempt_filepath_passes if {
 	c := commit("abc1234", "alice", "update release notes", ["docs/release-notes.md"])
 	count(violations) == 0 with input as make_input([c], {})
 }
 
+# Scenario 4 — Mixed files — some exempt, some not
 test_mixed_files_not_exempt if {
 	c := commit("abc1234", "alice", "update stuff", ["README.md", "src/app.ts"])
 	v := violations with input as make_input([c], {})
@@ -71,6 +75,7 @@ test_mixed_files_not_exempt if {
 # Merge commits
 # ---------------------------------------------------------------------------
 
+# Scenario 5 — GitHub merge commit
 test_merge_commit_multiple_parents_passes if {
 	c := {
 		"sha": "abc1234",
@@ -83,6 +88,7 @@ test_merge_commit_multiple_parents_passes if {
 	count(violations) == 0 with input as make_input([c], {})
 }
 
+# Scenario 5 — GitHub merge commit
 test_merge_commit_pr_message_passes if {
 	c := commit("abc1234", "alice", "Merge pull request #42 from alice/feature", ["src/app.ts"])
 	count(violations) == 0 with input as make_input([c], {})
@@ -92,6 +98,7 @@ test_merge_commit_pr_message_passes if {
 # No associated PR
 # ---------------------------------------------------------------------------
 
+# Scenario 6 — Commit pushed directly to main — no PR
 test_no_pr_fails if {
 	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
 	v := violations with input as make_input([c], {})
@@ -103,6 +110,7 @@ test_no_pr_fails if {
 # PR approval
 # ---------------------------------------------------------------------------
 
+# Scenario 1 — Standard PR with independent approval
 test_independent_approval_after_commit_passes if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
 	pr := {
@@ -112,6 +120,7 @@ test_independent_approval_after_commit_passes if {
 	count(violations) == 0 with input as make_input([c], {"42": pr})
 }
 
+# Scenario 8 — Self-approval only
 test_self_approval_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
 	pr := {
@@ -123,6 +132,7 @@ test_self_approval_fails if {
 	contains(msg, "no independent approval")
 }
 
+# Scenario 9 — New code pushed after approval
 test_approval_before_latest_commit_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
 	late_commit := object.union(pr_commit("abc1234"), {"date": "2023-01-01T11:00:00Z"})
@@ -135,6 +145,7 @@ test_approval_before_latest_commit_fails if {
 	contains(msg, "no independent approval")
 }
 
+# Scenario 7 — PR exists but has no approvals
 test_no_approvals_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
 	pr := {
@@ -150,6 +161,7 @@ test_no_approvals_fails if {
 # Post-approval merge-from-base (ignore mode)
 # ---------------------------------------------------------------------------
 
+# Scenario 10 — Post-approval merge-from-base (ignore mode)
 test_merge_from_base_after_approval_ignored if {
 	# PR has: code commit at 09:00, approval at 10:00, merge-from-base at 11:00
 	# In ignore mode the merge-from-base should not invalidate the approval
@@ -171,6 +183,7 @@ test_merge_from_base_after_approval_ignored if {
 		with post_approval_merge_commits as "ignore"
 }
 
+# Scenario 11 — Post-approval merge-from-base (strict mode)
 test_merge_from_base_after_approval_strict_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
 	code_commit := pr_commit("sha_code")
@@ -192,6 +205,7 @@ test_merge_from_base_after_approval_strict_fails if {
 	contains(msg, "no independent approval")
 }
 
+# Scenario 12 — All PR commits are merge-from-base — fallback to all commits (ignore mode)
 test_all_commits_merge_from_base_fallback_uses_all if {
 	# When every commit in the PR is a merge-from-base, fall back to all commits
 	# The approval at 12:00 is after the latest commit at 11:00 — should pass
@@ -216,6 +230,7 @@ test_all_commits_merge_from_base_fallback_uses_all if {
 # Mixed: multiple commits, some pass some fail
 # ---------------------------------------------------------------------------
 
+# Scenario 13 — Multiple commits — only failing ones reported
 test_only_failing_commits_reported if {
 	passing := object.union(commit("aaa1111", "svc_bot", "automated", ["src/app.ts"]), {"pr_number": null})
 	failing := commit("bbb2222", "alice", "feat: add feature", ["src/app.ts"])
