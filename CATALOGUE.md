@@ -28,6 +28,22 @@ A violation means a commit reached the release that was not subject to independe
 
 ---
 
+## Regulatory mapping
+
+| Framework | Clause | Why it fits |
+| --- | --- | --- |
+| NIST 800-53 | CM-5(4) Dual Authorization | Directly requires two separate parties to authorize a change — the control enforces exactly this by rejecting self-approved commits |
+| NIST 800-53 | AC-5 Separation of Duties | The author/approver independence check is a textbook SoD enforcement at the code change level |
+| NIST 800-53 | AU-12 Audit Record Generation | The JSON attestation artifact is a per-commit audit record of who authorized each change and when |
+| ISO 27001 (2022) | 5.3 Segregation of Duties | Prevents any single person from both authoring and approving their own change; the control produces evidence this was upheld |
+| ISO 27001 (2022) | 8.25 Secure Development Life Cycle | The control is embedded in the CI/CD pipeline as a security gate over source code changes |
+| ISO 27001 (2022) | 8.32 Change Management | Produces documented, timestamped authorization evidence for each change entering a release |
+| ISO 20000-1 | 7.5 Change Management (authorization sub-clause) | Satisfies the requirement that changes are authorized by an appropriate authority before deployment |
+| DORA | Article 17 — ICT Change Management | Provides retained, machine-readable evidence that each ICT change was approved by an authority independent of the author |
+| DORA | Article 9(2) — Protection and Prevention | Enforces access restriction: no actor can unilaterally push a change to production without an independent approver |
+
+---
+
 ## Data collection
 
 The collector is a TypeScript CLI that runs in CI against a specific release range (`BASE_TAG`..`CURRENT_TAG`).
