@@ -1,5 +1,7 @@
 # Source Code Review Verification Tool
 
+## Note! This tool is in alpha, and is therefore subject to extensive changes.
+
 This tool verifies adherence to the "four-eyes principle" for code changes within a specified release range. It is split into two parts:
 
 1. **Collector** — a TypeScript CLI that fetches commit and PR data from git and the GitHub API, and writes a self-contained JSON attestation file.
