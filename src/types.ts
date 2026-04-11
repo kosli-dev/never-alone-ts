@@ -27,9 +27,9 @@ export interface KosliTrail {
 export interface UserIdentity {
   git_name?: string;
   git_email?: string;
-  github_login?: string;
-  github_id?: number;
-  html_url?: string;
+  login?: string;
+  user_id?: number;
+  web_url?: string;
 }
 
 export interface CommitInfo {
@@ -59,7 +59,7 @@ export interface PRDetails {
   merged_at: string | null;
   approvals: {
     user: UserIdentity;
-    timestamp: string;
+    approved_at: string;
   }[];
   commits: CommitInfo[];
 }

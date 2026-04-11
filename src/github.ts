@@ -60,9 +60,9 @@ export class GitHubClient {
         url: pr.data.html_url,
         title: pr.data.title,
         author: {
-          github_login: pr.data.user?.login,
-          github_id: pr.data.user?.id,
-          html_url: pr.data.user?.html_url,
+          login: pr.data.user?.login,
+          user_id: pr.data.user?.id,
+          web_url: pr.data.user?.html_url,
         },
         state: pr.data.state,
         merged_at: pr.data.merged_at || null,
@@ -70,11 +70,11 @@ export class GitHubClient {
           .filter((r: any) => r.state === 'APPROVED')
           .map((r: any) => ({
             user: {
-              github_login: r.user?.login,
-              github_id: r.user?.id,
-              html_url: r.user?.html_url,
+              login: r.user?.login,
+              user_id: r.user?.id,
+              web_url: r.user?.html_url,
             },
-            timestamp: r.submitted_at,
+            approved_at: r.submitted_at,
           })),
         commits: commits.data.map((c: any) => ({
           sha: c.sha,
@@ -82,9 +82,9 @@ export class GitHubClient {
           author: {
             git_name: c.commit.author?.name,
             git_email: c.commit.author?.email,
-            github_login: c.author?.login,
-            github_id: c.author?.id,
-            html_url: c.author?.html_url,
+            login: c.author?.login,
+            user_id: c.author?.id,
+            web_url: c.author?.html_url,
           },
           date: new Date(c.commit.author?.date || 0),
           message: c.commit.message,
@@ -104,9 +104,9 @@ export class GitHubClient {
         ref: sha,
       });
       return {
-        github_login: response.data.author?.login,
-        github_id: response.data.author?.id,
-        html_url: response.data.author?.html_url,
+        login: response.data.author?.login,
+        user_id: response.data.author?.id,
+        web_url: response.data.author?.html_url,
       };
     } catch (error) {
       console.error(`Error fetching commit details for ${sha}: ${error}`);

@@ -35,9 +35,9 @@
       "author": {
         "git_name": "Sami Alajrami",
         "git_email": "sami@kosli.com",
-        "github_login": "sami-alajrami",
-        "github_id": 9263493,
-        "html_url": "https://github.com/sami-alajrami"
+        "login": "sami-alajrami",
+        "user_id": 9263493,
+        "web_url": "https://github.com/sami-alajrami"
       },
       "date": "2026-03-02T16:16:25.000Z",
       "message": "update list and get repo cmds to match updated API response (#672)",
@@ -57,9 +57,9 @@
       "author": {
         "git_name": "Sami Alajrami",
         "git_email": "sami@kosli.com",
-        "github_login": "sami-alajrami",
-        "github_id": 9263493,
-        "html_url": "https://github.com/sami-alajrami"
+        "login": "sami-alajrami",
+        "user_id": 9263493,
+        "web_url": "https://github.com/sami-alajrami"
       },
       "date": "2026-02-27T09:59:53.000Z",
       "message": "add get repo command (#661)",
@@ -84,9 +84,9 @@
       "author": {
         "git_name": "SimonC",
         "git_email": "sd.castagna@gmail.com",
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "date": "2026-02-26T10:18:55.000Z",
       "message": "Fix authentication error with dockerAuthConfig (#669)",
@@ -103,9 +103,9 @@
       "author": {
         "git_name": "Dan Grøndahl",
         "git_email": "dan@kosli.com",
-        "github_login": "dangrondahl",
-        "github_id": 7084600,
-        "html_url": "https://github.com/dangrondahl"
+        "login": "dangrondahl",
+        "user_id": 7084600,
+        "web_url": "https://github.com/dangrondahl"
       },
       "date": "2026-02-24T09:23:59.000Z",
       "message": "fix: escape parsing of angle-brackets in Mintlify doc gen (#668)",
@@ -123,9 +123,9 @@
       "author": {
         "git_name": "SimonC",
         "git_email": "sd.castagna@gmail.com",
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "date": "2026-02-23T14:34:46.000Z",
       "message": "Remove migration files from docs (#666)",
@@ -144,9 +144,9 @@
       "author": {
         "git_name": "SimonC",
         "git_email": "sd.castagna@gmail.com",
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "date": "2026-02-23T14:20:41.000Z",
       "message": "Change PR number in test (#667)",
@@ -163,9 +163,9 @@
       "author": {
         "git_name": "SimonC",
         "git_email": "sd.castagna@gmail.com",
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "date": "2026-02-23T13:36:49.000Z",
       "message": "Fix some links in docs (#665)",
@@ -183,9 +183,9 @@
       "author": {
         "git_name": "Dan Grøndahl",
         "git_email": "dan@kosli.com",
-        "github_login": "dangrondahl",
-        "github_id": 7084600,
-        "html_url": "https://github.com/dangrondahl"
+        "login": "dangrondahl",
+        "user_id": 7084600,
+        "web_url": "https://github.com/dangrondahl"
       },
       "date": "2026-02-23T09:55:32.000Z",
       "message": "docs: add release guide (#664)",
@@ -202,20 +202,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/661",
       "title": "add get repo command",
       "author": {
-        "github_login": "sami-alajrami",
-        "github_id": 9263493,
-        "html_url": "https://github.com/sami-alajrami"
+        "login": "sami-alajrami",
+        "user_id": 9263493,
+        "web_url": "https://github.com/sami-alajrami"
       },
       "state": "closed",
       "merged_at": "2026-02-27T09:59:54Z",
       "approvals": [
         {
           "user": {
-            "github_login": "ToreMerkely",
-            "github_id": 93583343,
-            "html_url": "https://github.com/ToreMerkely"
+            "login": "ToreMerkely",
+            "user_id": 93583343,
+            "web_url": "https://github.com/ToreMerkely"
           },
-          "timestamp": "2026-02-27T09:59:52Z"
+          "approved_at": "2026-02-27T09:59:52Z"
         }
       ],
       "commits": [
@@ -227,9 +227,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-20T09:24:02.000Z",
           "message": "add get repo command"
@@ -242,9 +242,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-20T11:45:18.000Z",
           "message": "add provider and repo-id filters to get and list repo commands"
@@ -257,9 +257,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-20T11:45:35.000Z",
           "message": "correct comment"
@@ -273,9 +273,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-25T13:50:00.000Z",
           "message": "Merge branch 'main' into get-repo"
@@ -288,9 +288,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-26T09:06:59.000Z",
           "message": "fix linting issue"
@@ -303,9 +303,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-26T09:07:25.000Z",
           "message": "change the org used in list repos test"
@@ -318,9 +318,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-26T09:10:35.000Z",
           "message": "update indirect dep cloudflare/circl to fix a vulnerability"
@@ -333,9 +333,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-26T09:22:17.000Z",
           "message": "add missing provider in the expected output"
@@ -348,9 +348,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-26T09:38:11.000Z",
           "message": "fix whitespace mismatching"
@@ -363,9 +363,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-26T10:25:48.000Z",
           "message": "ensure get repos tests use a different org"
@@ -378,9 +378,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-02-27T09:42:11.000Z",
           "message": "update comments for clarity"
@@ -392,20 +392,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/664",
       "title": "docs: add release guide",
       "author": {
-        "github_login": "dangrondahl",
-        "github_id": 7084600,
-        "html_url": "https://github.com/dangrondahl"
+        "login": "dangrondahl",
+        "user_id": 7084600,
+        "web_url": "https://github.com/dangrondahl"
       },
       "state": "closed",
       "merged_at": "2026-02-23T09:55:32Z",
       "approvals": [
         {
           "user": {
-            "github_login": "JonJagger",
-            "github_id": 252118,
-            "html_url": "https://github.com/JonJagger"
+            "login": "JonJagger",
+            "user_id": 252118,
+            "web_url": "https://github.com/JonJagger"
           },
-          "timestamp": "2026-02-23T09:52:40Z"
+          "approved_at": "2026-02-23T09:52:40Z"
         }
       ],
       "commits": [
@@ -417,9 +417,9 @@
           "author": {
             "git_name": "Dan Grøndahl",
             "git_email": "dan@kosli.com",
-            "github_login": "dangrondahl",
-            "github_id": 7084600,
-            "html_url": "https://github.com/dangrondahl"
+            "login": "dangrondahl",
+            "user_id": 7084600,
+            "web_url": "https://github.com/dangrondahl"
           },
           "date": "2026-02-23T09:44:32.000Z",
           "message": "docs: add release guide"
@@ -431,20 +431,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/665",
       "title": "Fix some links in docs",
       "author": {
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "state": "closed",
       "merged_at": "2026-02-23T13:36:49Z",
       "approvals": [
         {
           "user": {
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
-          "timestamp": "2026-02-23T13:23:42Z"
+          "approved_at": "2026-02-23T13:23:42Z"
         }
       ],
       "commits": [
@@ -456,9 +456,9 @@
           "author": {
             "git_name": "Simon Castagna",
             "git_email": "simon@kosli.com",
-            "github_login": "jumboduck",
-            "github_id": 1781310,
-            "html_url": "https://github.com/jumboduck"
+            "login": "jumboduck",
+            "user_id": 1781310,
+            "web_url": "https://github.com/jumboduck"
           },
           "date": "2026-02-23T13:22:10.000Z",
           "message": "Fix some links in docs"
@@ -470,28 +470,28 @@
       "url": "https://github.com/kosli-dev/cli/pull/666",
       "title": "Remove migration files from docs",
       "author": {
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "state": "closed",
       "merged_at": "2026-02-23T14:34:46Z",
       "approvals": [
         {
           "user": {
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
-          "timestamp": "2026-02-23T13:43:41Z"
+          "approved_at": "2026-02-23T13:43:41Z"
         },
         {
           "user": {
-            "github_login": "FayeSGW",
-            "github_id": 108031168,
-            "html_url": "https://github.com/FayeSGW"
+            "login": "FayeSGW",
+            "user_id": 108031168,
+            "web_url": "https://github.com/FayeSGW"
           },
-          "timestamp": "2026-02-23T13:43:57Z"
+          "approved_at": "2026-02-23T13:43:57Z"
         }
       ],
       "commits": [
@@ -503,9 +503,9 @@
           "author": {
             "git_name": "Simon Castagna",
             "git_email": "simon@kosli.com",
-            "github_login": "jumboduck",
-            "github_id": 1781310,
-            "html_url": "https://github.com/jumboduck"
+            "login": "jumboduck",
+            "user_id": 1781310,
+            "web_url": "https://github.com/jumboduck"
           },
           "date": "2026-02-23T13:42:58.000Z",
           "message": "Remove migration files from docs"
@@ -519,9 +519,9 @@
           "author": {
             "git_name": "Simon Castagna",
             "git_email": "simon@kosli.com",
-            "github_login": "jumboduck",
-            "github_id": 1781310,
-            "html_url": "https://github.com/jumboduck"
+            "login": "jumboduck",
+            "user_id": 1781310,
+            "web_url": "https://github.com/jumboduck"
           },
           "date": "2026-02-23T14:27:49.000Z",
           "message": "Merge branch 'main' into cleanup-docs"
@@ -533,20 +533,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/667",
       "title": "Change PR number in test",
       "author": {
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "state": "closed",
       "merged_at": "2026-02-23T14:20:42Z",
       "approvals": [
         {
           "user": {
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
-          "timestamp": "2026-02-23T14:14:50Z"
+          "approved_at": "2026-02-23T14:14:50Z"
         }
       ],
       "commits": [
@@ -558,9 +558,9 @@
           "author": {
             "git_name": "Simon Castagna",
             "git_email": "simon@kosli.com",
-            "github_login": "jumboduck",
-            "github_id": 1781310,
-            "html_url": "https://github.com/jumboduck"
+            "login": "jumboduck",
+            "user_id": 1781310,
+            "web_url": "https://github.com/jumboduck"
           },
           "date": "2026-02-23T14:13:17.000Z",
           "message": "Change PR number in test"
@@ -572,20 +572,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/668",
       "title": "fix(docgen): escape MDX-incompatible patterns in Mintlify output",
       "author": {
-        "github_login": "dangrondahl",
-        "github_id": 7084600,
-        "html_url": "https://github.com/dangrondahl"
+        "login": "dangrondahl",
+        "user_id": 7084600,
+        "web_url": "https://github.com/dangrondahl"
       },
       "state": "closed",
       "merged_at": "2026-02-24T09:23:59Z",
       "approvals": [
         {
           "user": {
-            "github_login": "jumboduck",
-            "github_id": 1781310,
-            "html_url": "https://github.com/jumboduck"
+            "login": "jumboduck",
+            "user_id": 1781310,
+            "web_url": "https://github.com/jumboduck"
           },
-          "timestamp": "2026-02-24T09:23:12Z"
+          "approved_at": "2026-02-24T09:23:12Z"
         }
       ],
       "commits": [
@@ -597,9 +597,9 @@
           "author": {
             "git_name": "Dan Grøndahl",
             "git_email": "dan@kosli.com",
-            "github_login": "dangrondahl",
-            "github_id": 7084600,
-            "html_url": "https://github.com/dangrondahl"
+            "login": "dangrondahl",
+            "user_id": 7084600,
+            "web_url": "https://github.com/dangrondahl"
           },
           "date": "2026-02-24T08:13:00.000Z",
           "message": "fix: escape parsing of angle-brackets in Mintlify doc gen"
@@ -611,20 +611,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/669",
       "title": "Fix authentication error with dockerAuthConfig",
       "author": {
-        "github_login": "jumboduck",
-        "github_id": 1781310,
-        "html_url": "https://github.com/jumboduck"
+        "login": "jumboduck",
+        "user_id": 1781310,
+        "web_url": "https://github.com/jumboduck"
       },
       "state": "closed",
       "merged_at": "2026-02-26T10:18:55Z",
       "approvals": [
         {
           "user": {
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
-          "timestamp": "2026-02-26T10:18:54Z"
+          "approved_at": "2026-02-26T10:18:54Z"
         }
       ],
       "commits": [
@@ -636,9 +636,9 @@
           "author": {
             "git_name": "Simon Castagna",
             "git_email": "simon@kosli.com",
-            "github_login": "jumboduck",
-            "github_id": 1781310,
-            "html_url": "https://github.com/jumboduck"
+            "login": "jumboduck",
+            "user_id": 1781310,
+            "web_url": "https://github.com/jumboduck"
           },
           "date": "2026-02-25T15:32:15.000Z",
           "message": "Fix authentication error with dockerAuthConfig"
@@ -650,20 +650,20 @@
       "url": "https://github.com/kosli-dev/cli/pull/672",
       "title": "update list and get repo cmds to match updated API response",
       "author": {
-        "github_login": "sami-alajrami",
-        "github_id": 9263493,
-        "html_url": "https://github.com/sami-alajrami"
+        "login": "sami-alajrami",
+        "user_id": 9263493,
+        "web_url": "https://github.com/sami-alajrami"
       },
       "state": "closed",
       "merged_at": "2026-03-02T16:16:25Z",
       "approvals": [
         {
           "user": {
-            "github_login": "FayeSGW",
-            "github_id": 108031168,
-            "html_url": "https://github.com/FayeSGW"
+            "login": "FayeSGW",
+            "user_id": 108031168,
+            "web_url": "https://github.com/FayeSGW"
           },
-          "timestamp": "2026-03-02T16:16:24Z"
+          "approved_at": "2026-03-02T16:16:24Z"
         }
       ],
       "commits": [
@@ -675,9 +675,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-03-02T13:20:39.000Z",
           "message": "update list and get repo cmds to match updated API response"
@@ -690,9 +690,9 @@
           "author": {
             "git_name": "Sami Alajrami",
             "git_email": "sami@kosli.com",
-            "github_login": "sami-alajrami",
-            "github_id": 9263493,
-            "html_url": "https://github.com/sami-alajrami"
+            "login": "sami-alajrami",
+            "user_id": 9263493,
+            "web_url": "https://github.com/sami-alajrami"
           },
           "date": "2026-03-02T14:56:16.000Z",
           "message": "fix tests"

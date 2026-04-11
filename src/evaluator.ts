@@ -8,9 +8,9 @@ export class Collector {
   async collectCommit(commit: CommitInfo): Promise<{ commitData: CommitData; prDetails?: PRDetails }> {
     const githubAuthor = await this.github.getCommitDetails(commit.sha);
     if (githubAuthor) {
-      commit.author.github_login = githubAuthor.github_login;
-      commit.author.github_id = githubAuthor.github_id;
-      commit.author.html_url = githubAuthor.html_url;
+      commit.author.login = githubAuthor.login;
+      commit.author.user_id = githubAuthor.user_id;
+      commit.author.web_url = githubAuthor.web_url;
     }
 
     const changedFiles = getChangedFiles(commit.sha, this.repoPath);

@@ -66,8 +66,8 @@ latest_relevant_commit_ns(pr) := max(
 has_independent_approval(commit, pr) if {
 	cutoff := latest_relevant_commit_ns(pr)
 	some approval in pr.approvals
-	approval.user.github_login != commit.author.github_login
-	time.parse_rfc3339_ns(approval.timestamp) > cutoff
+	approval.user.login != commit.author.login
+	time.parse_rfc3339_ns(approval.approved_at) > cutoff
 }
 
 # ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ is_service_account(commit) if {
 
 is_service_account(commit) if {
 	some pattern in attestation.config.exemptions.serviceAccounts
-	regex.match(pattern, commit.author.github_login)
+	regex.match(pattern, commit.author.login)
 }
 
 is_exempt_file(file) if {

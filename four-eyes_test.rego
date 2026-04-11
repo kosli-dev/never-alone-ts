@@ -12,16 +12,16 @@ exemptions := {
 	"fileNames": ["README.md"],
 }
 
-make_input(commits, pull_requests) := {"trail": {"attestations": {"scr-data": {"payload": {
+make_input(commits, pull_requests) := {"trail": {"compliance_status": {"attestations_statuses": {"scr-data": {"user_data": {
 	"config": {"exemptions": exemptions},
 	"commits": commits,
 	"pull_requests": pull_requests,
-}}}}}
+}}}}}}
 
 commit(sha, author_login, message, changed_files) := {
 	"sha": sha,
 	"parent_shas": ["parent1"],
-	"author": {"git_name": author_login, "github_login": author_login},
+	"author": {"git_name": author_login, "login": author_login},
 	"date": "2023-01-01T10:00:00Z",
 	"message": message,
 	"changed_files": changed_files,
@@ -30,12 +30,12 @@ commit(sha, author_login, message, changed_files) := {
 pr_commit(sha) := {
 	"sha": sha,
 	"parent_shas": ["parent1"],
-	"author": {"github_login": "alice"},
+	"author": {"login": "alice"},
 	"date": "2023-01-01T09:00:00Z",
 	"message": "code change",
 }
 
-approval(login, timestamp) := {"user": {"github_login": login}, "timestamp": timestamp}
+approval(login, approved_at) := {"user": {"login": login}, "approved_at": approved_at}
 
 # ---------------------------------------------------------------------------
 # Service account
@@ -80,7 +80,7 @@ test_merge_commit_multiple_parents_passes if {
 	c := {
 		"sha": "abc1234",
 		"parent_shas": ["parent1", "parent2"],
-		"author": {"github_login": "alice"},
+		"author": {"login": "alice"},
 		"date": "2023-01-01T10:00:00Z",
 		"message": "feat: some feature",
 		"changed_files": ["src/app.ts"],
@@ -170,7 +170,7 @@ test_merge_from_base_after_approval_ignored if {
 	merge_commit := {
 		"sha": "sha_merge",
 		"parent_shas": ["sha_code", "external_sha"], # one parent outside PR
-		"author": {"github_login": "alice"},
+		"author": {"login": "alice"},
 		"date": "2023-01-01T11:00:00Z",
 		"message": "Merge branch 'main' into feature",
 	}
@@ -190,7 +190,7 @@ test_merge_from_base_after_approval_strict_fails if {
 	merge_commit := {
 		"sha": "sha_merge",
 		"parent_shas": ["sha_code", "external_sha"],
-		"author": {"github_login": "alice"},
+		"author": {"login": "alice"},
 		"date": "2023-01-01T11:00:00Z",
 		"message": "Merge branch 'main' into feature",
 	}
@@ -213,7 +213,7 @@ test_all_commits_merge_from_base_fallback_uses_all if {
 	merge_only := {
 		"sha": "sha_merge",
 		"parent_shas": ["external_sha1", "external_sha2"],
-		"author": {"github_login": "alice"},
+		"author": {"login": "alice"},
 		"date": "2023-01-01T11:00:00Z",
 		"message": "Merge branch 'main' into feature",
 	}

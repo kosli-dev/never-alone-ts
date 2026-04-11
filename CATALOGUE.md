@@ -78,7 +78,7 @@ git log --first-parent BASE_TAG..CURRENT_TAG
     {
       "sha": "<40-char>",
       "parent_shas": ["<sha>"],
-      "author": { "git_name": "...", "github_login": "...", "github_id": 0 },
+      "author": { "git_name": "...", "login": "...", "user_id": 0 },
       "date": "<ISO-8601>",
       "message": "...",
       "changed_files": ["src/foo.ts"],
@@ -88,8 +88,8 @@ git log --first-parent BASE_TAG..CURRENT_TAG
   "pull_requests": {
     "42": {
       "number": 42,
-      "commits": [{ "sha": "...", "author": { "github_login": "..." }, "date": "..." }],
-      "approvals": [{ "user": { "github_login": "..." }, "timestamp": "<ISO-8601>" }]
+      "commits": [{ "sha": "...", "author": { "login": "..." }, "date": "..." }],
+      "approvals": [{ "user": { "login": "..." }, "approved_at": "<ISO-8601>" }]
     }
   }
 }
@@ -119,8 +119,8 @@ For each commit in attestation.commits:
 
 Step 5 detail — "independent approval after latest code commit":
 
-- **Independent**: approver's `github_login` ≠ commit author's `github_login`
-- **After**: `approval.timestamp > max(relevant_pr_commits.date)`
+- **Independent**: approver's `login` ≠ commit author's `login`
+- **After**: `approval.approved_at > max(relevant_pr_commits.date)`
 - **Relevant commits**: controlled by `post_approval_merge_commits` — in `ignore` mode, commits that merge from the base branch back into the feature branch are excluded from the timestamp comparison (they only carry changes already reviewed on main); in `strict` mode all commits count
 
 ---
@@ -175,8 +175,8 @@ latest_relevant_commit_ns(pr) := max(
 has_independent_approval(commit, pr) if {
     cutoff := latest_relevant_commit_ns(pr)
     some approval in pr.approvals
-    approval.user.github_login != commit.author.github_login
-    time.parse_rfc3339_ns(approval.timestamp) > cutoff
+    approval.user.login != commit.author.login
+    time.parse_rfc3339_ns(approval.approved_at) > cutoff
 }
 
 # Exemption checks
@@ -187,7 +187,7 @@ is_service_account(commit) if {
 
 is_service_account(commit) if {
     some pattern in attestation.config.exemptions.serviceAccounts
-    regex.match(pattern, commit.author.github_login)
+    regex.match(pattern, commit.author.login)
 }
 
 is_exempt_file(file) if {
@@ -246,7 +246,7 @@ All configuration lives in `scr.config.json` at the repository root and is embed
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `exemptions.serviceAccounts` | `string[]` | `[]` | Regex patterns matched against `git_name` and `github_login`. Commits by matching authors are fully exempt. |
+| `exemptions.serviceAccounts` | `string[]` | `[]` | Regex patterns matched against `git_name` and `login`. Commits by matching authors are fully exempt. |
 | `exemptions.filePaths` | `string[]` | `[]` | Exact file paths. A commit is exempt if every changed file matches one of these paths. |
 | `exemptions.fileNames` | `string[]` | `[]` | Bare filenames (basename only). A commit is exempt if every changed file's basename matches one of these names. |
 | `post_approval_merge_commits` | `"ignore"` \| `"strict"` | `"strict"` | Controls whether merge-from-base commits count against the approval timestamp. Set in `four-eyes.rego` directly. |
@@ -311,7 +311,7 @@ See [`SCENARIOS.md`](SCENARIOS.md) for the full set of named test cases with dia
 - **GitHub-only**: PR and approval data is fetched exclusively from the GitHub API. Approvals recorded in external systems (Jira, email, Slack) are invisible to this control.
 - **Approval dismissal not tracked**: if a review approval was later dismissed (e.g. because new commits were pushed), GitHub's API may still return it. The control's own timestamp comparison is the primary safeguard against stale approvals.
 - **Empty `changed_files` is not file-exempt**: a commit with no files listed (possible if git diff-tree returns nothing) is not treated as file-exempt and is subject to the full PR approval check.
-- **Author identity requires GitHub API**: if the GitHub API cannot resolve a `git_name` to a `github_login`, the `has_independent_approval` check cannot compare author against approver and will fail the commit. Ensure `GITHUB_TOKEN` has sufficient scope.
+- **Author identity requires platform API**: if the platform API cannot resolve a `git_name` to a `login`, the `has_independent_approval` check cannot compare author against approver and will fail the commit. Ensure the API token has sufficient scope.
 - **No enforcement at merge time**: this control is evaluated at release time, not at the moment a PR is merged. A violation means the release must be blocked or remediated; it does not prevent the offending merge from happening.
 
 ---
@@ -331,7 +331,7 @@ When the control fails, the violation message identifies the commit SHA and the 
 | Pattern | Why it triggers | Resolution |
 | --- | --- | --- |
 | Developer syncs feature branch with `main` after approval (`Merge branch 'main' into feature-x`) | In `strict` mode this merge-from-base commit post-dates the approval | Switch `post_approval_merge_commits` to `"ignore"` in `four-eyes.rego` |
-| Bot commits not matching any `serviceAccounts` pattern | The author name is not in the exemption list | Add the bot's `git_name` or `github_login` pattern to `serviceAccounts` in `scr.config.json` |
+| Bot commits not matching any `serviceAccounts` pattern | The author name is not in the exemption list | Add the bot's `git_name` or `login` pattern to `serviceAccounts` in `scr.config.json` |
 | Documentation-only commits touching a file not in the exempt list | The file extension or name is not in `fileNames`/`filePaths` | Add the filename or path to the appropriate exemption list |
 
 ---
