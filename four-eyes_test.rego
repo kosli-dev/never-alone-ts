@@ -25,6 +25,7 @@ commit(sha, author_login, message, changed_files) := {
 	"date": "2023-01-01T10:00:00Z",
 	"message": message,
 	"changed_files": changed_files,
+	"pr_numbers": [],
 }
 
 pr_commit(sha) := {
@@ -51,7 +52,7 @@ approval(login, approved_at) := {"user": {"login": login}, "approved_at": approv
 
 # Scenario 2 — Service account commit
 test_service_account_passes if {
-	c := object.union(commit("abc1234", "svc_deployer", "automated", ["src/app.ts"]), {"pr_number": null})
+	c := commit("abc1234", "svc_deployer", "automated", ["src/app.ts"])
 	count(violations) == 0 with input as make_input([c], {})
 }
 
@@ -120,7 +121,7 @@ test_no_pr_fails if {
 
 # Scenario 1 — Standard PR with independent approval
 test_independent_approval_after_commit_passes if {
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
 		"commits": [pr_commit("abc1234")],
 		"approvals": [approval("bob", "2023-01-01T10:00:01Z")],
@@ -130,19 +131,19 @@ test_independent_approval_after_commit_passes if {
 
 # Scenario 8 — Self-approval only
 test_self_approval_fails if {
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
 		"commits": [pr_commit("abc1234")],
 		"approvals": [approval("alice", "2023-01-01T10:00:01Z")],
 	}
 	v := violations with input as make_input([c], {"42": pr})
 	some msg in v
-	contains(msg, "no independent approval")
+	contains(msg, "independent approval")
 }
 
 # Scenario 9 — New code pushed after approval
 test_approval_before_latest_commit_fails if {
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	late_commit := object.union(pr_commit("abc1234"), {"date": "2023-01-01T11:00:00Z"})
 	pr := {
 		"commits": [pr_commit("sha_early"), late_commit],
@@ -150,19 +151,19 @@ test_approval_before_latest_commit_fails if {
 	}
 	v := violations with input as make_input([c], {"42": pr})
 	some msg in v
-	contains(msg, "no independent approval")
+	contains(msg, "independent approval")
 }
 
 # Scenario 7 — PR exists but has no approvals
 test_no_approvals_fails if {
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
 		"commits": [pr_commit("abc1234")],
 		"approvals": [],
 	}
 	v := violations with input as make_input([c], {"42": pr})
 	some msg in v
-	contains(msg, "no independent approval")
+	contains(msg, "independent approval")
 }
 
 # ---------------------------------------------------------------------------
@@ -173,7 +174,7 @@ test_no_approvals_fails if {
 test_merge_from_base_after_approval_ignored if {
 	# PR has: code commit at 09:00, approval at 10:00, merge-from-base at 11:00
 	# In ignore mode the merge-from-base should not invalidate the approval
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	code_commit := pr_commit("sha_code") # date: 09:00
 	merge_commit := {
 		"sha": "sha_merge",
@@ -193,7 +194,7 @@ test_merge_from_base_after_approval_ignored if {
 
 # Scenario 11 — Post-approval merge-from-base (strict mode)
 test_merge_from_base_after_approval_strict_fails if {
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	code_commit := pr_commit("sha_code")
 	merge_commit := {
 		"sha": "sha_merge",
@@ -210,14 +211,14 @@ test_merge_from_base_after_approval_strict_fails if {
 		with input as make_input([c], {"42": pr})
 		with post_approval_merge_commits as "strict"
 	some msg in v
-	contains(msg, "no independent approval")
+	contains(msg, "independent approval")
 }
 
 # Scenario 12 — All PR commits are merge-from-base — fallback to all commits (ignore mode)
 test_all_commits_merge_from_base_fallback_uses_all if {
 	# When every commit in the PR is a merge-from-base, fall back to all commits
 	# The approval at 12:00 is after the latest commit at 11:00 — should pass
-	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	merge_only := {
 		"sha": "sha_merge",
 		"parent_shas": ["external_sha1", "external_sha2"],
@@ -240,7 +241,7 @@ test_all_commits_merge_from_base_fallback_uses_all if {
 
 # Scenario 13 — Multi-author PR, cross-approval → PASS
 test_multi_author_cross_approval_passes if {
-	c := object.union(commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
 		"commits": [pr_commit_by("sha_sami", "sami"), pr_commit_by("sha_faye", "faye")],
 		"approvals": [
@@ -253,14 +254,44 @@ test_multi_author_cross_approval_passes if {
 
 # Scenario 14 — Multi-author PR, only one committer approves → FAIL
 test_multi_author_only_one_committer_approves_fails if {
-	c := object.union(commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"]), {"pr_number": 42})
+	c := object.union(commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
 		"commits": [pr_commit_by("sha_sami", "sami"), pr_commit_by("sha_faye", "faye")],
 		"approvals": [approval("faye", "2023-01-01T10:00:01Z")],
 	}
 	v := violations with input as make_input([c], {"42": pr})
 	some msg in v
-	contains(msg, "no independent approval")
+	contains(msg, "independent approval")
+}
+
+# ---------------------------------------------------------------------------
+# Multiple associated PRs (Option 2 — any PR passing is sufficient)
+# ---------------------------------------------------------------------------
+
+# Scenario 15 — Commit linked to two PRs; first has no approval, second does → PASS
+test_second_pr_approval_satisfies_check if {
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [41, 42]})
+	pr_no_approval := {
+		"commits": [pr_commit("abc1234")],
+		"approvals": [],
+	}
+	pr_with_approval := {
+		"commits": [pr_commit("abc1234")],
+		"approvals": [approval("bob", "2023-01-01T10:00:01Z")],
+	}
+	count(violations) == 0 with input as make_input([c], {"41": pr_no_approval, "42": pr_with_approval})
+}
+
+# Scenario 16 — Commit linked to two PRs; neither has approval → FAIL
+test_no_pr_with_approval_fails if {
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [41, 42]})
+	pr_no_approval := {
+		"commits": [pr_commit("abc1234")],
+		"approvals": [],
+	}
+	v := violations with input as make_input([c], {"41": pr_no_approval, "42": pr_no_approval})
+	some msg in v
+	contains(msg, "independent approval")
 }
 
 # ---------------------------------------------------------------------------
@@ -269,7 +300,7 @@ test_multi_author_only_one_committer_approves_fails if {
 
 # Scenario 12 — Multiple commits — only failing ones reported
 test_only_failing_commits_reported if {
-	passing := object.union(commit("aaa1111", "svc_bot", "automated", ["src/app.ts"]), {"pr_number": null})
+	passing := object.union(commit("aaa1111", "svc_bot", "automated", ["src/app.ts"]), {"pr_numbers": []})
 	failing := commit("bbb2222", "alice", "feat: add feature", ["src/app.ts"])
 	v := violations with input as make_input([passing, failing], {})
 	count(v) == 1

@@ -124,6 +124,16 @@ is_merge_commit(commit) if {
 }
 
 # ---------------------------------------------------------------------------
+# Helpers — multi-PR support
+# ---------------------------------------------------------------------------
+
+has_any_pr_approval(commit) if {
+	some pr_num in commit.pr_numbers
+	pr := attestation.pull_requests[sprintf("%d", [pr_num])]
+	has_independent_approval(commit, pr)
+}
+
+# ---------------------------------------------------------------------------
 # Violations
 # ---------------------------------------------------------------------------
 
@@ -132,7 +142,7 @@ violations contains msg if {
 	not is_service_account(commit)
 	not all_files_exempt(commit)
 	not is_merge_commit(commit)
-	not commit.pr_number
+	count(commit.pr_numbers) == 0
 	msg := sprintf(
 		"Commit %v (%v): no associated PR found",
 		[substring(commit.sha, 0, 7), commit.message],
@@ -144,11 +154,10 @@ violations contains msg if {
 	not is_service_account(commit)
 	not all_files_exempt(commit)
 	not is_merge_commit(commit)
-	commit.pr_number
-	pr := attestation.pull_requests[sprintf("%d", [commit.pr_number])]
-	not has_independent_approval(commit, pr)
+	count(commit.pr_numbers) > 0
+	not has_any_pr_approval(commit)
 	msg := sprintf(
-		"Commit %v (%v): PR #%v has no independent approval after latest code commit",
-		[substring(commit.sha, 0, 7), commit.message, commit.pr_number],
+		"Commit %v (%v): none of PRs %v have an independent approval after latest code commit",
+		[substring(commit.sha, 0, 7), commit.message, commit.pr_numbers],
 	)
 }
