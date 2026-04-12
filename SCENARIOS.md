@@ -28,6 +28,50 @@ gitGraph
 
 ---
 
+## Multi-author PRs
+
+---
+
+### 13. Multi-author PR — cross-approval
+
+**Description:** Two developers each commit to the same feature branch. Both also act as reviewers — Sami approves Faye's commit, and Faye approves Sami's commit. Each commit has at least one approval from someone other than its author.
+
+**Result:** `PASS` — every commit has an independent approver.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/collab
+   commit id: "c2 (Sami)"
+   commit id: "c3 (Faye)"
+   checkout main
+   merge feature/collab id: "Merge PR #60" tag: "v1.1.0"
+```
+
+> Sami approves at 10:00 (independent for c3). Faye approves at 10:05 (independent for c2). All commits covered → PASS.
+
+---
+
+### 14. Multi-author PR — only one committer approves
+
+**Description:** Two developers commit to the same branch, but only Faye approves the PR. Faye's approval is valid for Sami's commit (c2) since Faye didn't author it, but Faye cannot independently approve her own commit (c3). No other reviewer is present.
+
+**Result:** `FAIL` — c3 has no independent approver (Faye self-approves).
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/collab
+   commit id: "c2 (Sami)"
+   commit id: "c3 (Faye)" type: REVERSE
+   checkout main
+   merge feature/collab id: "Merge PR #61" type: REVERSE tag: "v1.1.0"
+```
+
+> Only Faye approves. Faye authored c3 — self-approval does not count. c3 has no independent approver → FAIL.
+
+---
+
 ## Exemptions
 
 ---
@@ -185,6 +229,28 @@ gitGraph
 
 ---
 
+### 15. Direct commit on branch followed by PR in same release range
+
+**Description:** A developer pushes a commit directly to the release branch (bypassing review), then later a separate change arrives via a proper PR with independent approval. The release range spans both. The direct commit has no associated PR and fails, even though the PR commits are fully compliant.
+
+**Result:** `FAIL` — one commit in the range was pushed directly without a PR.
+
+```mermaid
+gitGraph
+   commit id: "c1" tag: "v1.0.0"
+   branch release
+   commit id: "c2 (direct)" type: REVERSE
+   branch feature
+   commit id: "c3"
+   commit id: "c4"
+   checkout release
+   merge feature id: "Merge PR #62" tag: "v1.1.0"
+```
+
+> c2 pushed directly to `release` — no PR found → FAIL. c3 and c4 arrived via a proper PR with independent approval — they pass. Only c2's SHA appears in violations.
+
+---
+
 ## Merge-from-base handling
 
 ---
@@ -256,3 +322,49 @@ gitGraph
 ```
 
 > `chore: bump deps` authored by `svc_bot` — service account, passes. `feat: add feature` pushed directly by `alice` — no PR, fails. Only `feat: add feature`'s SHA appears in violations.
+
+---
+
+### 16. Two PRs in release range — both independently approved
+
+**Description:** A release range spans two separate merged PRs. Sami authors the first PR and Faye reviews it; Faye authors the second and Sami reviews it. Each PR has an independent approver. All commits in the range pass.
+
+**Result:** `PASS` — every PR in the range has an independent approval.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/A
+   commit id: "c2 (Sami)"
+   checkout main
+   merge feature/A id: "Merge PR #63"
+   branch feature/B
+   commit id: "c3 (Faye)"
+   checkout main
+   merge feature/B id: "Merge PR #64" tag: "v1.1.0"
+```
+
+> PR #63: Sami authors, Faye approves → PASS. PR #64: Faye authors, Sami approves → PASS. No violations.
+
+---
+
+### 17. Two PRs in release range — one is self-approved
+
+**Description:** Same as scenario 16, but Faye's PR is only approved by Faye herself. The tool correctly identifies which PR fails and surfaces only that commit in the violations list.
+
+**Result:** `FAIL` — one PR in the range has only a self-approval.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/A
+   commit id: "c2 (Sami)"
+   checkout main
+   merge feature/A id: "Merge PR #65"
+   branch feature/B
+   commit id: "c3 (Faye)" type: REVERSE
+   checkout main
+   merge feature/B id: "Merge PR #66" type: REVERSE tag: "v1.1.0"
+```
+
+> PR #65: Sami authors, Faye approves → PASS. PR #66: Faye authors, only Faye approves → self-approval only, FAIL. Only c3's SHA appears in violations.

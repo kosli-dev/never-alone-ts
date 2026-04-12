@@ -36,6 +36,13 @@ post_approval_merge_commits := "strict"  # "ignore" or "strict"
 
 pr_commit_shas(pr) := {c.sha | some c in pr.commits}
 
+# Logins of every PR branch commit author whose identity could be resolved.
+pr_commit_authors(pr) := {login |
+	some c in pr.commits
+	login := c.author.login
+	login != null
+}
+
 is_merge_from_base(commit, pr) if {
 	count(commit.parent_shas) > 1
 	some parent in commit.parent_shas
@@ -65,9 +72,14 @@ latest_relevant_commit_ns(pr) := max(
 
 has_independent_approval(commit, pr) if {
 	cutoff := latest_relevant_commit_ns(pr)
-	some approval in pr.approvals
-	approval.user.login != commit.author.login
-	time.parse_rfc3339_ns(approval.approved_at) > cutoff
+	# Union of PR branch commit authors and the main-branch commit author.
+	# Null logins are excluded — unresolvable identities are not checked.
+	all_authors := (pr_commit_authors(pr) | {commit.author.login}) - {null}
+	every author_login in all_authors {
+		some approval in pr.approvals
+		approval.user.login != author_login
+		time.parse_rfc3339_ns(approval.approved_at) > cutoff
+	}
 }
 
 # ---------------------------------------------------------------------------

@@ -35,6 +35,14 @@ pr_commit(sha) := {
 	"message": "code change",
 }
 
+pr_commit_by(sha, login) := {
+	"sha": sha,
+	"parent_shas": ["parent1"],
+	"author": {"login": login},
+	"date": "2023-01-01T09:00:00Z",
+	"message": "code change",
+}
+
 approval(login, approved_at) := {"user": {"login": login}, "approved_at": approved_at}
 
 # ---------------------------------------------------------------------------
@@ -227,10 +235,39 @@ test_all_commits_merge_from_base_fallback_uses_all if {
 }
 
 # ---------------------------------------------------------------------------
+# Multi-author PRs
+# ---------------------------------------------------------------------------
+
+# Scenario 13 — Multi-author PR, cross-approval → PASS
+test_multi_author_cross_approval_passes if {
+	c := object.union(commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"]), {"pr_number": 42})
+	pr := {
+		"commits": [pr_commit_by("sha_sami", "sami"), pr_commit_by("sha_faye", "faye")],
+		"approvals": [
+			approval("faye", "2023-01-01T10:00:01Z"),
+			approval("sami", "2023-01-01T10:00:02Z"),
+		],
+	}
+	count(violations) == 0 with input as make_input([c], {"42": pr})
+}
+
+# Scenario 14 — Multi-author PR, only one committer approves → FAIL
+test_multi_author_only_one_committer_approves_fails if {
+	c := object.union(commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"]), {"pr_number": 42})
+	pr := {
+		"commits": [pr_commit_by("sha_sami", "sami"), pr_commit_by("sha_faye", "faye")],
+		"approvals": [approval("faye", "2023-01-01T10:00:01Z")],
+	}
+	v := violations with input as make_input([c], {"42": pr})
+	some msg in v
+	contains(msg, "no independent approval")
+}
+
+# ---------------------------------------------------------------------------
 # Mixed: multiple commits, some pass some fail
 # ---------------------------------------------------------------------------
 
-# Scenario 13 — Multiple commits — only failing ones reported
+# Scenario 12 — Multiple commits — only failing ones reported
 test_only_failing_commits_reported if {
 	passing := object.union(commit("aaa1111", "svc_bot", "automated", ["src/app.ts"]), {"pr_number": null})
 	failing := commit("bbb2222", "alice", "feat: add feature", ["src/app.ts"])
