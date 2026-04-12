@@ -48,7 +48,7 @@ export class GitHubClient {
       const [pr, reviews, commits] = await Promise.all([
         this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
         this.octokit.pulls.listReviews({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
-        this.octokit.pulls.listCommits({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
+        this.octokit.paginate(this.octokit.pulls.listCommits, { owner: this.owner, repo: this.repo, pull_number: prNumber, per_page: 100 }),
       ]);
 
       return {
@@ -72,7 +72,7 @@ export class GitHubClient {
             },
             approved_at: r.submitted_at,
           })),
-        commits: commits.data.map((c: any) => ({
+        commits: commits.map((c: any) => ({
           sha: c.sha,
           parent_shas: c.parents.map((p: any) => p.sha),
           author: {
