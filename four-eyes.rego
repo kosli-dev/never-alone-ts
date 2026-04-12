@@ -73,8 +73,10 @@ latest_relevant_commit_ns(pr) := max(
 has_independent_approval(commit, pr) if {
 	cutoff := latest_relevant_commit_ns(pr)
 	# Union of PR branch commit authors and the main-branch commit author.
-	# Null logins are excluded — unresolvable identities are not checked.
+	# Null logins are excluded from the approval check — but see the violation
+	# below that fires when any PR commit author cannot be resolved.
 	all_authors := (pr_commit_authors(pr) | {commit.author.login}) - {null}
+	count(all_authors) > 0
 	every author_login in all_authors {
 		some approval in pr.approvals
 		approval.user.login != author_login
@@ -136,6 +138,17 @@ has_any_pr_approval(commit) if {
 # ---------------------------------------------------------------------------
 # Violations
 # ---------------------------------------------------------------------------
+
+violations contains msg if {
+	some _, pr in attestation.pull_requests
+	some c in pr.commits
+	c.author.login == null
+	not is_service_account(c)
+	msg := sprintf(
+		"PR #%v: commit %v author '%v <%v>' has no linked GitHub account — identity unverifiable",
+		[pr.number, substring(c.sha, 0, 7), c.author.git_name, c.author.git_email],
+	)
+}
 
 violations contains msg if {
 	some commit in attestation.commits

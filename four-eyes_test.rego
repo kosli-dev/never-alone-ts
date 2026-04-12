@@ -265,6 +265,67 @@ test_multi_author_only_one_committer_approves_fails if {
 }
 
 # ---------------------------------------------------------------------------
+# Null login / unresolvable identity
+# ---------------------------------------------------------------------------
+
+pr_commit_no_github(sha, git_name, git_email) := {
+	"sha": sha,
+	"parent_shas": ["parent1"],
+	"author": {"git_name": git_name, "git_email": git_email, "login": null},
+	"date": "2023-01-01T09:00:00Z",
+	"message": "code change",
+}
+
+# Scenario 17 — PR commit author has no linked GitHub account → "identity unverifiable" violation
+test_null_login_pr_commit_unverifiable if {
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
+	pr := {
+		"number": 42,
+		"commits": [pr_commit_no_github("sha1", "John Doe", "john@company.com")],
+		"approvals": [approval("bob", "2023-01-01T10:00:01Z")],
+	}
+	v := violations with input as make_input([c], {"42": pr})
+	some msg in v
+	contains(msg, "identity unverifiable")
+	contains(msg, "john@company.com")
+}
+
+# Scenario 18 — All logins null: has_independent_approval must not vacuously pass
+test_all_null_logins_no_vacuous_pass if {
+	c := {
+		"sha": "abc1234",
+		"parent_shas": ["parent1"],
+		"author": {"git_name": "John Doe", "git_email": "john@company.com", "login": null},
+		"date": "2023-01-01T10:00:00Z",
+		"message": "feat: add feature",
+		"changed_files": ["src/app.ts"],
+		"pr_numbers": [42],
+	}
+	pr := {
+		"number": 42,
+		"commits": [pr_commit_no_github("sha1", "John Doe", "john@company.com")],
+		"approvals": [approval("bob", "2023-01-01T10:00:01Z")],
+	}
+	v := violations with input as make_input([c], {"42": pr})
+	some msg in v
+	contains(msg, "independent approval")
+}
+
+# Scenario 19 — PR commit with null login but matching service-account pattern → no identity violation
+test_null_login_service_account_pr_commit_exempt if {
+	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
+	pr := {
+		"number": 42,
+		"commits": [pr_commit_no_github("sha1", "svc_bot", "svc@company.com")],
+		"approvals": [approval("bob", "2023-01-01T10:00:01Z")],
+	}
+	v := violations with input as make_input([c], {"42": pr})
+	every msg in v {
+		not contains(msg, "identity unverifiable")
+	}
+}
+
+# ---------------------------------------------------------------------------
 # Multiple associated PRs (Option 2 — any PR passing is sufficient)
 # ---------------------------------------------------------------------------
 
