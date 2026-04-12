@@ -21,21 +21,21 @@ const mockConfig: Config = {
 const mockCommit: CommitData = {
   sha: 'abc123',
   parent_shas: ['parent1'],
-  author: { github_login: 'alice' },
+  author: { login: 'alice' },
   date: '2023-01-01T10:00:00.000Z',
   message: 'feat: add feature',
   changed_files: ['src/app.ts'],
-  pr_number: 42,
+  pr_numbers: [42],
 };
 
 const mockPR: PRDetails = {
   number: 42,
   url: 'https://github.com/owner/repo/pull/42',
   title: 'Add feature',
-  author: { github_login: 'alice' },
+  author: { login: 'alice' },
   state: 'closed',
   merged_at: '2023-01-01T11:00:00Z',
-  approvals: [{ user: { github_login: 'bob' }, timestamp: '2023-01-01T10:30:00Z' }],
+  approvals: [{ user: { login: 'bob' }, approved_at: '2023-01-01T10:30:00Z' }],
   commits: [],
 };
 

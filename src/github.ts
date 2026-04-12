@@ -32,18 +32,14 @@ export class GitHubClient {
     });
   }
 
-  async findPRForCommit(sha: string): Promise<number | undefined> {
+  async findPRForCommit(sha: string): Promise<number[]> {
     try {
       const q = `is:pr is:merged sha:${sha} repo:${this.owner}/${this.repo}`;
       const response = await this.octokit.search.issuesAndPullRequests({ q });
-      
-      if (response.data.total_count > 0) {
-        return response.data.items[0].number;
-      }
-      return undefined;
+      return response.data.items.map((item: any) => item.number);
     } catch (error) {
       console.error(`Error searching PR for commit ${sha}: ${error}`);
-      return undefined;
+      return [];
     }
   }
 

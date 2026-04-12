@@ -51,8 +51,8 @@ async function main() {
       console.log(`Collecting commit ${commit.sha.substring(0, 7)}: ${commit.message.substring(0, 30)}...`);
       const { commitData, prDetails } = await collector.collectCommit(commit);
       collectedCommits.push(commitData);
-      if (commitData.pr_number && prDetails) {
-        pullRequests[commitData.pr_number.toString()] = prDetails;
+      for (const pr of prDetails) {
+        pullRequests[pr.number.toString()] = pr;
       }
     }
 

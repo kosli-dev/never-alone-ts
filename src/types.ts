@@ -47,7 +47,7 @@ export interface CommitData {
   date: string;
   message: string;
   changed_files: string[];
-  pr_number?: number;
+  pr_numbers: number[];
 }
 
 export interface PRDetails {

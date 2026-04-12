@@ -5,7 +5,7 @@ import { GitHubClient } from './github';
 export class Collector {
   constructor(private github: GitHubClient, private repoPath: string = process.cwd()) {}
 
-  async collectCommit(commit: CommitInfo): Promise<{ commitData: CommitData; prDetails?: PRDetails }> {
+  async collectCommit(commit: CommitInfo): Promise<{ commitData: CommitData; prDetails: PRDetails[] }> {
     const githubAuthor = await this.github.getCommitDetails(commit.sha);
     if (githubAuthor) {
       commit.author.login = githubAuthor.login;
@@ -14,12 +14,11 @@ export class Collector {
     }
 
     const changedFiles = getChangedFiles(commit.sha, this.repoPath);
-    const prNumber = await this.github.findPRForCommit(commit.sha);
+    const prNumbers = await this.github.findPRForCommit(commit.sha);
 
-    let prDetails: PRDetails | undefined;
-    if (prNumber) {
-      prDetails = await this.github.getPRFullDetails(prNumber) ?? undefined;
-    }
+    const prDetails = (
+      await Promise.all(prNumbers.map(n => this.github.getPRFullDetails(n)))
+    ).filter((pr): pr is PRDetails => pr != null);
 
     return {
       commitData: {
@@ -29,7 +28,7 @@ export class Collector {
         date: commit.date.toISOString(),
         message: commit.message,
         changed_files: changedFiles,
-        pr_number: prNumber,
+        pr_numbers: prNumbers,
       },
       prDetails,
     };
