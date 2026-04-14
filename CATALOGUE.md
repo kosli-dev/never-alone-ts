@@ -20,8 +20,9 @@ Every code change that reaches a production release must have been reviewed and 
 The control operationalises this by examining all commits in a release range (the delta between two tags) and verifying that each one either:
 
 - was authored by an automated agent (service account) that is trusted by policy, or
-- is a merge commit created by the VCS (not a human-authored change), or
 - was delivered via a pull request that received at least one independent approval *after* the last code commit in that PR.
+
+Merge commits (multiple parents) follow the same PR approval path as any other commit. Their author set is derived from the PR branch commits only — the identity of whoever clicked Merge is not included, since that person was executing a merge rather than contributing code. A commit with a fabricated `"Merge pull request #"` message but a single parent is not treated as a merge commit and is subject to the full check.
 
 A violation means a commit reached the release that was not subject to independent review at any point in its lifecycle.
 
@@ -102,24 +103,24 @@ The attestation file is uploaded to Kosli via `kosli attest generic`, which make
 
 ## Evaluation logic
 
-The Rego policy evaluates the attestation in a single pass. For each commit it applies exemption checks in order; the first match short-circuits the rest:
+The Rego policy evaluates the attestation in a single pass. For each commit it applies checks in order; the first match short-circuits the rest:
 
 ```text
 For each commit in attestation.commits:
 
   1. Is the author a service account?         → PASS (exempt)
-  2. Is this a merge commit?                   → PASS (exempt)
-     (multiple parents  OR  "Merge pull request #" message)
-  3. No associated PR number?                  → FAIL
-  4. PR found — does it have an independent
+  2. No associated PR number?                  → FAIL
+  3. PR found — does it have an independent
      approval after the latest code commit?    → PASS / FAIL
 ```
 
-Step 5 detail — "independent approval after latest code commit":
+Step 3 detail — "independent approval after latest code commit":
 
-- **Independent**: approver's `login` ≠ commit author's `login`
-- **After**: `approval.approved_at > max(relevant_pr_commits.date)`
-- **Relevant commits**: controlled by `post_approval_merge_commits` — in `ignore` mode, commits that merge from the base branch back into the feature branch are excluded from the timestamp comparison (they only carry changes already reviewed on main); in `strict` mode all commits count
+- **Author set**: for regular commits (single parent), the union of all PR branch commit authors and the commit's own author. For merge commits (multiple parents), only the PR branch commit authors — the merger's login is excluded.
+- **Independent**: every login in the author set must have at least one approval from a *different* login.
+- **After**: every such approval must satisfy `approval.approved_at > max(relevant_pr_commits.date)`.
+- **Relevant commits**: controlled by `post_approval_merge_commits` — in `ignore` mode, commits that merge from the base branch back into the feature branch are excluded from the timestamp comparison (they only carry changes already reviewed on main); in `strict` mode all commits count.
+- **Merge commit detection**: a commit is a merge commit if and only if it has more than one parent SHA. Message text is not used — it is user-controlled and therefore not a reliable signal.
 
 ---
 
@@ -134,7 +135,7 @@ default allow = false
 
 allow if count(violations) == 0
 
-attestation := input.trail.compliance_status.attestations_statuses["scr-data"].user_data
+attestation := input.trail.compliance_status.attestations_statuses["scr-data"].attestation_data
 
 # "ignore" — exclude merge-from-base commits from the approval timing check
 # "strict" — any commit after the last approval causes a failure
@@ -142,6 +143,14 @@ post_approval_merge_commits := "strict"
 
 # Helpers
 pr_commit_shas(pr) := {c.sha | some c in pr.commits}
+
+pr_commit_authors(pr) := {login |
+    some c in pr.commits
+    login := c.author.login
+    login != null
+}
+
+is_merge_commit(commit) if { count(commit.parent_shas) > 1 }
 
 is_merge_from_base(commit, pr) if {
     count(commit.parent_shas) > 1
@@ -170,11 +179,30 @@ latest_relevant_commit_ns(pr) := max(
     {time.parse_rfc3339_ns(c.date) | some c in relevant_pr_commits(pr)},
 )
 
+# Regular commits: PR branch authors + this commit's own author must all have approval.
 has_independent_approval(commit, pr) if {
+    not is_merge_commit(commit)
     cutoff := latest_relevant_commit_ns(pr)
-    some approval in pr.approvals
-    approval.user.login != commit.author.login
-    time.parse_rfc3339_ns(approval.approved_at) > cutoff
+    all_authors := (pr_commit_authors(pr) | {commit.author.login}) - {null}
+    count(all_authors) > 0
+    every author_login in all_authors {
+        some approval in pr.approvals
+        approval.user.login != author_login
+        time.parse_rfc3339_ns(approval.approved_at) > cutoff
+    }
+}
+
+# Merge commits: only PR branch authors matter — the merger clicked a button, not code.
+has_independent_approval(commit, pr) if {
+    is_merge_commit(commit)
+    cutoff := latest_relevant_commit_ns(pr)
+    all_authors := pr_commit_authors(pr) - {null}
+    count(all_authors) > 0
+    every author_login in all_authors {
+        some approval in pr.approvals
+        approval.user.login != author_login
+        time.parse_rfc3339_ns(approval.approved_at) > cutoff
+    }
 }
 
 # Service account exemption
@@ -188,15 +216,17 @@ is_service_account(commit) if {
     regex.match(pattern, commit.author.login)
 }
 
-is_merge_commit(commit) if { count(commit.parent_shas) > 1 }
-is_merge_commit(commit) if { startswith(commit.message, "Merge pull request #") }
+has_any_pr_approval(commit) if {
+    some pr_num in commit.pr_numbers
+    pr := attestation.pull_requests[sprintf("%d", [pr_num])]
+    has_independent_approval(commit, pr)
+}
 
 # Violations
 violations contains msg if {
     some commit in attestation.commits
     not is_service_account(commit)
-    not is_merge_commit(commit)
-    not commit.pr_number
+    count(commit.pr_numbers) == 0
     msg := sprintf(
         "Commit %v (%v): no associated PR found",
         [substring(commit.sha, 0, 7), commit.message],
@@ -206,13 +236,11 @@ violations contains msg if {
 violations contains msg if {
     some commit in attestation.commits
     not is_service_account(commit)
-    not is_merge_commit(commit)
-    commit.pr_number
-    pr := attestation.pull_requests[sprintf("%d", [commit.pr_number])]
-    not has_independent_approval(commit, pr)
+    count(commit.pr_numbers) > 0
+    not has_any_pr_approval(commit)
     msg := sprintf(
-        "Commit %v (%v): PR #%v has no independent approval after latest code commit",
-        [substring(commit.sha, 0, 7), commit.message, commit.pr_number],
+        "Commit %v (%v): none of PRs %v have an independent approval after latest code commit",
+        [substring(commit.sha, 0, 7), commit.message, commit.pr_numbers],
     )
 }
 ```
@@ -246,7 +274,6 @@ All configuration lives in `scr.config.json` at the repository root and is embed
 | Exemption type | Condition | Rationale |
 | --- | --- | --- |
 | Service account | Author name or login matches a regex in `serviceAccounts` | Automated commits (dependency updates, release scripts, CI bots) are not human-authored and cannot have a human reviewer. The service account identity itself is the control — access to that credential is the review gate. |
-| Merge commit | Multiple parents or `Merge pull request #` message | GitHub's merge commits are structural — they record that a PR was merged, not that new code was introduced. The code itself was already in the PR commits, which are evaluated separately. |
 
 ---
 
@@ -267,15 +294,20 @@ See [`SCENARIOS.md`](SCENARIOS.md) for the full set of named test cases with dia
 | --- | --- | --- |
 | 1 | Standard PR with independent approval | PASS |
 | 2 | Service account commit | PASS |
-| 3 | GitHub merge commit | PASS |
-| 4 | Commit pushed directly to main — no PR | FAIL |
-| 5 | PR exists but has no approvals | FAIL |
-| 6 | Self-approval only | FAIL |
-| 7 | New code pushed after approval | FAIL |
-| 8 | Post-approval merge-from-base (`ignore` mode) | PASS |
-| 9 | Post-approval merge-from-base (`strict` mode) | FAIL |
-| 10 | All PR commits are merge-from-base — fallback (`ignore` mode) | PASS |
+| 3 | GitHub merge commit — checked via PR | PASS |
+| 4 | Fake merge commit message — bypass attempt | FAIL |
+| 5 | Commit pushed directly to main — no PR | FAIL |
+| 6 | PR exists but has no approvals | FAIL |
+| 7 | Self-approval only | FAIL |
+| 8 | New code pushed after approval | FAIL |
+| 9 | Post-approval merge-from-base (`ignore` mode) | PASS |
+| 10 | Post-approval merge-from-base (`strict` mode) | FAIL |
 | 11 | Multiple commits — only failing ones reported | FAIL (partial) |
+| 13 | Multi-author PR — cross-approval | PASS |
+| 14 | Multi-author PR — only one committer approves | FAIL |
+| 15 | Direct commit on branch followed by PR in same range | FAIL |
+| 16 | Two PRs in range — both independently approved | PASS |
+| 17 | Two PRs in range — one is self-approved | FAIL |
 
 ---
 

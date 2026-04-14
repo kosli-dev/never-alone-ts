@@ -72,12 +72,25 @@ latest_relevant_commit_ns(pr) := max(
 	{time.parse_rfc3339_ns(c.date) | some c in relevant_pr_commits(pr)},
 )
 
+# Regular commits: PR branch authors + this commit's own author must all have independent approval.
 has_independent_approval(commit, pr) if {
+	not is_merge_commit(commit)
 	cutoff := latest_relevant_commit_ns(pr)
-	# Union of PR branch commit authors and the main-branch commit author.
-	# Null logins are excluded from the approval check — but see the violation
-	# below that fires when any PR commit author cannot be resolved.
 	all_authors := (pr_commit_authors(pr) | {commit.author.login}) - {null}
+	count(all_authors) > 0
+	every author_login in all_authors {
+		some approval in pr.approvals
+		approval.user.login != author_login
+		time.parse_rfc3339_ns(approval.approved_at) > cutoff
+	}
+}
+
+# Merge commits: only PR branch authors matter — the merger clicked a button, not code.
+# Including the merger's login would cause false positives when a reviewer merges the PR.
+has_independent_approval(commit, pr) if {
+	is_merge_commit(commit)
+	cutoff := latest_relevant_commit_ns(pr)
+	all_authors := pr_commit_authors(pr) - {null}
 	count(all_authors) > 0
 	every author_login in all_authors {
 		some approval in pr.approvals
@@ -102,10 +115,6 @@ is_service_account(commit) if {
 
 is_merge_commit(commit) if {
 	count(commit.parent_shas) > 1
-}
-
-is_merge_commit(commit) if {
-	startswith(commit.message, "Merge pull request #")
 }
 
 # ---------------------------------------------------------------------------
@@ -141,7 +150,6 @@ violations contains msg if {
 violations contains msg if {
 	some commit in attestation.commits
 	not is_service_account(commit)
-	not is_merge_commit(commit)
 	count(commit.pr_numbers) == 0
 	msg := sprintf(
 		"Commit %v (%v): no associated PR found",
@@ -152,7 +160,6 @@ violations contains msg if {
 violations contains msg if {
 	some commit in attestation.commits
 	not is_service_account(commit)
-	not is_merge_commit(commit)
 	count(commit.pr_numbers) > 0
 	not has_any_pr_approval(commit)
 	msg := sprintf(

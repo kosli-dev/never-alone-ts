@@ -82,10 +82,8 @@ export function getInitialCommit(repoPath: string = process.cwd()): string {
 
 export function isMergeCommit(sha: string, repoPath: string = process.cwd()): boolean {
   try {
-    const parentCount = parseInt(execSync(`git show -s --format=%p ${sha}`, { encoding: 'utf8', cwd: repoPath }).trim().split(' ').length.toString());
-    const message = execSync(`git show -s --format=%s ${sha}`, { encoding: 'utf8', cwd: repoPath }).trim();
-    
-    return parentCount > 1 || message.startsWith('Merge pull request #');
+    const parentCount = execSync(`git show -s --format=%p ${sha}`, { encoding: 'utf8', cwd: repoPath }).trim().split(' ').length;
+    return parentCount > 1;
   } catch (error) {
     console.error(`Error checking merge commit for ${sha}: ${error}`);
     return false;

@@ -4,7 +4,7 @@ Each scenario describes a commit pattern, the expected result, and why. The git 
 
 ---
 
-## The happy path
+## Scenarios
 
 ---
 
@@ -28,7 +28,197 @@ gitGraph
 
 ---
 
-## Multi-author PRs
+### 2. Service account commit
+
+**Description:** An automated process (CI bot, dependency updater, release script) pushes a commit. The author's name matches a pattern in `serviceAccounts` (e.g. `svc_.*`, `dependabot`). These commits are exempt from human review requirements.
+
+**Result:** `PASS` — author matches a service account pattern.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   commit id: "chore: bump deps" type: HIGHLIGHT
+   commit id: "..." tag: "v1.1.0"
+```
+
+> Commit authored by `dependabot[bot]` — matches `svc_.*` pattern. Evaluation stops here.
+
+---
+
+### 3. GitHub merge commit — checked via PR
+
+**Description:** When GitHub merges a PR using the "Create a merge commit" strategy, it produces a commit on `main` with two parents (the previous `main` tip and the feature branch tip). The control identifies this as a merge commit by parent count and applies the PR approval check, using only the PR branch commit authors — not the login of whoever clicked the Merge button, since they were executing a merge rather than contributing code.
+
+**Result:** `PASS` — merge commit is linked to a PR that has an independent approval after the latest code commit.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/search
+   commit id: "add search (alice)"
+   checkout main
+   merge feature/search id: "Merge PR #44 (2 parents)" type: HIGHLIGHT tag: "v1.1.0"
+```
+
+> Alice authors the branch commit. Bob approves the PR. GitHub creates the merge commit (2 parents). The approval check uses `pr_commit_authors` = {alice}; Bob's approval satisfies the check → PASS.
+
+---
+
+### 4. Fake merge commit message — bypass attempt
+
+**Description:** A developer names a regular single-parent commit `"Merge pull request #42 from ..."` to trick the control into treating it as a merge commit and skipping the approval check. Because merge commit detection is based solely on parent count, not message text, the commit has only one parent and is correctly treated as a regular commit. It has no associated PR and fails.
+
+**Result:** `FAIL` — single-parent commit with a fabricated merge message is not a merge commit; no associated PR found.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   commit id: "Merge pull request #42 from alice/evil" type: REVERSE
+   commit id: "..." tag: "v1.1.0"
+```
+
+> Commit has one parent — `is_merge_commit` is false. No PR associated with this SHA → "no associated PR found" violation.
+
+---
+
+### 5. Commit pushed directly to main — no PR
+
+**Description:** A developer bypasses the PR process and pushes directly to the main branch. The tool cannot find any merged PR associated with the commit SHA. Without a PR there can be no independent approval.
+
+**Result:** `FAIL` — no associated PR found.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   commit id: "fix: quick hotfix" type: REVERSE
+   commit id: "..." tag: "v1.1.0"
+```
+
+> Commit pushed directly to `main`. No PR exists in GitHub search results.
+
+---
+
+### 6. PR exists but has no approvals
+
+**Description:** A PR was opened and merged, but no reviewer ever submitted an approval. The approvals list is empty. Without any approval there can be no independent one.
+
+**Result:** `FAIL` — no independent approval (approvals list is empty).
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/quick-fix
+   commit id: "fix: quick fix"
+   checkout main
+   merge feature/quick-fix id: "Merge PR #53" type: REVERSE tag: "v1.1.0"
+```
+
+> PR #53 merged with zero approvals. No independent approval can be found → FAIL.
+
+---
+
+### 7. Self-approval only
+
+**Description:** The PR author is the only person who approved the PR. There is no independent approver. The four-eyes principle requires that at least one approval comes from someone other than the commit author.
+
+**Result:** `FAIL` — no independent approval (only self-approval).
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/refactor
+   commit id: "refactor: extract service"
+   checkout main
+   merge feature/refactor id: "Merge PR #50" type: REVERSE tag: "v1.1.0"
+```
+
+> PR #50 has one approval — from Alice, who is also the commit author. Self-approval does not satisfy four-eyes.
+
+---
+
+### 8. New code pushed after approval
+
+**Description:** A reviewer approves the PR, but the developer then pushes additional commits after the approval. The approval predates the latest code commit, so the reviewer never saw the final state of the code.
+
+**Result:** `FAIL` — approval exists but predates the latest commit.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/api
+   commit id: "add API endpoint"
+   checkout main
+   checkout feature/api
+   commit id: "add more endpoints ★" type: REVERSE
+   checkout main
+   merge feature/api id: "Merge PR #51" type: REVERSE tag: "v1.1.0"
+```
+
+> Bob approves at 10:00. `★` pushed at 11:00. Approval is before the latest commit → FAIL.
+
+---
+
+### 9. Post-approval merge-from-base (`ignore` mode)
+
+**Description:** A developer receives approval, then syncs their feature branch with `main` before merging (a `Merge branch 'main' into feature-x` commit). In `ignore` mode the merge-from-base commit is excluded from the timing check — the content it brings in was already reviewed on `main`. The approval still post-dates the actual code changes.
+
+**Result:** `PASS` — merge-from-base commits excluded; approval is after the latest code commit.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/payments
+   commit id: "add payment flow"
+   checkout main
+   commit id: "hotfix: fix header"
+   checkout feature/payments
+   merge main id: "Merge main → feature ★"
+   checkout main
+   merge feature/payments id: "Merge PR #45" tag: "v1.1.0"
+```
+
+> `add payment flow` committed at 09:00. Alice approves at 10:00. `★` merge-from-base at 11:00 (excluded in `ignore` mode). PR merged at 11:05. → PASS
+
+---
+
+### 10. Post-approval merge-from-base (`strict` mode)
+
+**Description:** Same as scenario 9, but the policy is set to `strict`. In strict mode every commit — including merge-from-base commits — must be preceded by a valid approval. Since the merge-from-base commit was pushed after the last approval, the check fails.
+
+**Result:** `FAIL` — merge-from-base commit post-dates the last approval (strict mode).
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   branch feature/payments
+   commit id: "add payment flow"
+   checkout main
+   commit id: "hotfix: fix header"
+   checkout feature/payments
+   merge main id: "Merge main → feature ★" type: REVERSE
+   checkout main
+   merge feature/payments id: "Merge PR #52" type: REVERSE tag: "v1.1.0"
+```
+
+> `add payment flow` at 09:00. Alice approves at 10:00. `★` merge-from-base at 11:00. In `strict` mode the `★` commit invalidates the approval → FAIL. Switch to `post_approval_merge_commits := "ignore"` in `four-eyes.rego` to treat this as scenario 9 (PASS).
+
+---
+
+### 11. Multiple commits — only failing ones reported
+
+**Description:** A release range contains several commits. Some pass (e.g. authored by a service account) and some fail (e.g. pushed directly to main without a PR). The output only surfaces violations for the commits that actually fail; passing commits are not mentioned.
+
+**Result:** `FAIL` for one commit; the other commit produces no violation. Only the failing SHA appears in the violations list.
+
+```mermaid
+gitGraph
+   commit id: "..." tag: "v1.0.0"
+   commit id: "chore: bump deps (svc_bot)" type: HIGHLIGHT
+   commit id: "feat: add feature (alice)" type: REVERSE
+   commit id: "..." tag: "v1.1.0"
+```
+
+> `chore: bump deps` authored by `svc_bot` — service account, passes. `feat: add feature` pushed directly by `alice` — no PR, fails. Only `feat: add feature`'s SHA appears in violations.
 
 ---
 
@@ -72,163 +262,6 @@ gitGraph
 
 ---
 
-## Exemptions
-
----
-
-### 2. Service account commit
-
-**Description:** An automated process (CI bot, dependency updater, release script) pushes a commit. The author's name matches a pattern in `serviceAccounts` (e.g. `svc_.*`, `dependabot`). These commits are exempt from human review requirements.
-
-**Result:** `PASS` — author matches a service account pattern.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   commit id: "chore: bump deps" type: HIGHLIGHT
-   commit id: "..." tag: "v1.1.0"
-```
-
-> Commit authored by `dependabot[bot]` — matches `svc_.*` pattern. Evaluation stops here.
-
----
-
-### 3. Exempted files only
-
-**Description:** A commit only touches files that are in the exemptions list (e.g. `README.md`, `package.json`, `.gitignore`). These files are considered low-risk and do not require a four-eyes review.
-
-**Result:** `PASS` — all changed files are exempted.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch docs/update-readme
-   commit id: "update README.md"
-   checkout main
-   merge docs/update-readme id: "Merge PR #43" tag: "v1.1.0"
-```
-
-> Only `README.md` changed. Matches `fileNames` exemption. No PR approval check needed.
-
----
-
-### 4. Mixed files — some exempt, some not
-
-**Description:** A commit touches both exempted files (e.g. `README.md`) and non-exempted files (e.g. `src/app.ts`). Exemptions only apply when _all_ changed files are on the exemption list. A single non-exempt file brings the whole commit back into scope.
-
-**Result:** `FAIL` — not all changed files are exempted; PR approval check applies and no PR is found.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   commit id: "update README and add feature" type: REVERSE
-   commit id: "..." tag: "v1.1.0"
-```
-
-> Changed files: `["README.md", "src/app.ts"]`. `README.md` matches `fileNames` exemption but `src/app.ts` does not — commit is not fully exempt.
-
----
-
-### 5. GitHub merge commit
-
-**Description:** When GitHub merges a PR via the UI or auto-merge, it creates a merge commit on the target branch with the message `Merge pull request #X from ...`. The tool recognises these as safe boundary commits and skips the approval check.
-
-**Result:** `PASS` — commit is a GitHub merge commit.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/search
-   commit id: "add search"
-   checkout main
-   merge feature/search id: "Merge pull request #44" type: HIGHLIGHT tag: "v1.1.0"
-```
-
-> The merge commit on `main` has message `Merge pull request #44` — automatically passes.
-
----
-
-## PR approval failures
-
----
-
-### 6. Commit pushed directly to main — no PR
-
-**Description:** A developer bypasses the PR process and pushes directly to the main branch. The tool cannot find any merged PR associated with the commit SHA. Without a PR there can be no independent approval.
-
-**Result:** `FAIL` — no associated PR found.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   commit id: "fix: quick hotfix" type: REVERSE
-   commit id: "..." tag: "v1.1.0"
-```
-
-> Commit pushed directly to `main`. No PR exists in GitHub search results.
-
----
-
-### 7. PR exists but has no approvals
-
-**Description:** A PR was opened and merged, but no reviewer ever submitted an approval. The approvals list is empty. Without any approval there can be no independent one.
-
-**Result:** `FAIL` — no independent approval (approvals list is empty).
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/quick-fix
-   commit id: "fix: quick fix"
-   checkout main
-   merge feature/quick-fix id: "Merge PR #53" type: REVERSE tag: "v1.1.0"
-```
-
-> PR #53 merged with zero approvals. No independent approval can be found → FAIL.
-
----
-
-### 8. Self-approval only
-
-**Description:** The PR author is the only person who approved the PR. There is no independent approver. The four-eyes principle requires that at least one approval comes from someone other than the commit author.
-
-**Result:** `FAIL` — no independent approval (only self-approval).
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/refactor
-   commit id: "refactor: extract service"
-   checkout main
-   merge feature/refactor id: "Merge PR #50" type: REVERSE tag: "v1.1.0"
-```
-
-> PR #50 has one approval — from Alice, who is also the commit author. Self-approval does not satisfy four-eyes.
-
----
-
-### 9. New code pushed after approval
-
-**Description:** A reviewer approves the PR, but the developer then pushes additional commits after the approval. The approval predates the latest code commit, so the reviewer never saw the final state of the code.
-
-**Result:** `FAIL` — approval exists but predates the latest commit.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/api
-   commit id: "add API endpoint"
-   checkout main
-   checkout feature/api
-   commit id: "add more endpoints ★" type: REVERSE
-   checkout main
-   merge feature/api id: "Merge PR #51" type: REVERSE tag: "v1.1.0"
-```
-
-> Bob approves at 10:00. `★` pushed at 11:00. Approval is before the latest commit → FAIL.
-
----
-
 ### 15. Direct commit on branch followed by PR in same release range
 
 **Description:** A developer pushes a commit directly to the release branch (bypassing review), then later a separate change arrives via a proper PR with independent approval. The release range spans both. The direct commit has no associated PR and fails, even though the PR commits are fully compliant.
@@ -248,80 +281,6 @@ gitGraph
 ```
 
 > c2 pushed directly to `release` — no PR found → FAIL. c3 and c4 arrived via a proper PR with independent approval — they pass. Only c2's SHA appears in violations.
-
----
-
-## Merge-from-base handling
-
----
-
-### 10. Post-approval merge-from-base (`ignore` mode)
-
-**Description:** A developer receives approval, then syncs their feature branch with `main` before merging (a `Merge branch 'main' into feature-x` commit). In `ignore` mode the merge-from-base commit is excluded from the timing check — the content it brings in was already reviewed on `main`. The approval still post-dates the actual code changes.
-
-**Result:** `PASS` — merge-from-base commits excluded; approval is after the latest code commit.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/payments
-   commit id: "add payment flow"
-   checkout main
-   commit id: "hotfix: fix header"
-   checkout feature/payments
-   merge main id: "Merge main → feature ★"
-   checkout main
-   merge feature/payments id: "Merge PR #45" tag: "v1.1.0"
-```
-
-> `add payment flow` committed at 09:00. Alice approves at 10:00. `★` merge-from-base at 11:00 (excluded in `ignore` mode). PR merged at 11:05. → PASS
-
----
-
-### 11. Post-approval merge-from-base (`strict` mode)
-
-**Description:** Same as scenario 10, but the policy is set to `strict`. In strict mode every commit — including merge-from-base commits — must be preceded by a valid approval. Since the merge-from-base commit was pushed after the last approval, the check fails.
-
-**Result:** `FAIL` — merge-from-base commit post-dates the last approval (strict mode).
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/payments
-   commit id: "add payment flow"
-   checkout main
-   commit id: "hotfix: fix header"
-   checkout feature/payments
-   merge main id: "Merge main → feature ★" type: REVERSE
-   checkout main
-   merge feature/payments id: "Merge PR #52" type: REVERSE tag: "v1.1.0"
-```
-
-> `add payment flow` at 09:00. Alice approves at 10:00. `★` merge-from-base at 11:00. In `strict` mode the `★` commit invalidates the approval → FAIL.
-
-> Switch to `post_approval_merge_commits := "ignore"` in `four-eyes.rego` to treat this as scenario 10 (PASS).
-
----
-
-## Multi-commit ranges
-
----
-
-### 12. Multiple commits — only failing ones reported
-
-**Description:** A release range contains several commits. Some pass (e.g. authored by a service account) and some fail (e.g. pushed directly to main without a PR). The output only surfaces violations for the commits that actually fail; passing commits are not mentioned.
-
-**Result:** `FAIL` for one commit; the other commit produces no violation. Only the failing SHA appears in the violations list.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   commit id: "chore: bump deps (svc_bot)" type: HIGHLIGHT
-   commit id: "feat: add feature (alice)" type: REVERSE
-   commit id: "..." tag: "v1.1.0"
-```
-
-> `chore: bump deps` authored by `svc_bot` — service account, passes. `feat: add feature` pushed directly by `alice` — no PR, fails. Only `feat: add feature`'s SHA appears in violations.
 
 ---
 

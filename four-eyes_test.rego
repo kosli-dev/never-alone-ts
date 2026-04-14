@@ -69,7 +69,7 @@ test_service_account_passes if {
 # Merge commits
 # ---------------------------------------------------------------------------
 
-# Scenario 5 — GitHub merge commit
+# Scenario 3 — GitHub merge commit (multiple parents) — checked via PR
 test_merge_commit_multiple_parents_passes if {
 	c := {
 		"sha": "abc1234",
@@ -82,17 +82,20 @@ test_merge_commit_multiple_parents_passes if {
 	count(violations) == 0 with input as make_input([c], {})
 }
 
-# Scenario 5 — GitHub merge commit
-test_merge_commit_pr_message_passes if {
+# Scenario 4 — Fake merge commit message — single-parent commit with "Merge pull request #" message
+# is NOT a merge commit and must be subject to the full PR + approval check.
+test_fake_merge_message_single_parent_requires_pr if {
 	c := commit("abc1234", "alice", "Merge pull request #42 from alice/feature", ["src/app.ts"])
-	count(violations) == 0 with input as make_input([c], {})
+	v := violations with input as make_input([c], {})
+	some msg in v
+	contains(msg, "no associated PR")
 }
 
 # ---------------------------------------------------------------------------
 # No associated PR
 # ---------------------------------------------------------------------------
 
-# Scenario 6 — Commit pushed directly to main — no PR
+# Scenario 5 — Commit pushed directly to main — no PR
 test_no_pr_fails if {
 	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
 	v := violations with input as make_input([c], {})
@@ -114,7 +117,7 @@ test_independent_approval_after_commit_passes if {
 	count(violations) == 0 with input as make_input([c], {"42": pr})
 }
 
-# Scenario 8 — Self-approval only
+# Scenario 7 — Self-approval only
 test_self_approval_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
@@ -126,7 +129,7 @@ test_self_approval_fails if {
 	contains(msg, "independent approval")
 }
 
-# Scenario 9 — New code pushed after approval
+# Scenario 8 — New code pushed after approval
 test_approval_before_latest_commit_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	late_commit := object.union(pr_commit("abc1234"), {"date": "2023-01-01T11:00:00Z"})
@@ -139,7 +142,7 @@ test_approval_before_latest_commit_fails if {
 	contains(msg, "independent approval")
 }
 
-# Scenario 7 — PR exists but has no approvals
+# Scenario 6 — PR exists but has no approvals
 test_no_approvals_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
@@ -155,7 +158,7 @@ test_no_approvals_fails if {
 # Post-approval merge-from-base (ignore mode)
 # ---------------------------------------------------------------------------
 
-# Scenario 10 — Post-approval merge-from-base (ignore mode)
+# Scenario 9 — Post-approval merge-from-base (ignore mode)
 test_merge_from_base_after_approval_ignored if {
 	# PR has: code commit at 09:00, approval at 10:00, merge-from-base at 11:00
 	# In ignore mode the merge-from-base should not invalidate the approval
@@ -177,7 +180,7 @@ test_merge_from_base_after_approval_ignored if {
 		with post_approval_merge_commits as "ignore"
 }
 
-# Scenario 11 — Post-approval merge-from-base (strict mode)
+# Scenario 10 — Post-approval merge-from-base (strict mode)
 test_merge_from_base_after_approval_strict_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	code_commit := pr_commit("sha_code")
@@ -199,7 +202,7 @@ test_merge_from_base_after_approval_strict_fails if {
 	contains(msg, "independent approval")
 }
 
-# Scenario 12 — All PR commits are merge-from-base — fallback to all commits (ignore mode)
+# Scenario 9 (edge case) — All PR commits are merge-from-base — fallback to all commits (ignore mode)
 test_all_commits_merge_from_base_fallback_uses_all if {
 	# When every commit in the PR is a merge-from-base, fall back to all commits
 	# The approval at 12:00 is after the latest commit at 11:00 — should pass
@@ -261,7 +264,7 @@ pr_commit_no_github(sha, git_name, git_email) := {
 	"message": "code change",
 }
 
-# Scenario 17 — PR commit author has no linked GitHub account → "identity unverifiable" violation
+# Null login — PR commit author has no linked GitHub account → "identity unverifiable" violation
 test_null_login_pr_commit_unverifiable if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
@@ -275,7 +278,7 @@ test_null_login_pr_commit_unverifiable if {
 	contains(msg, "john@company.com")
 }
 
-# Scenario 18 — All logins null: has_independent_approval must not vacuously pass
+# Null login — all logins null: has_independent_approval must not vacuously pass
 test_all_null_logins_no_vacuous_pass if {
 	c := {
 		"sha": "abc1234",
@@ -296,7 +299,7 @@ test_all_null_logins_no_vacuous_pass if {
 	contains(msg, "independent approval")
 }
 
-# Scenario 19 — PR commit with null login but matching service-account pattern → no identity violation
+# Null login — PR commit matches service-account pattern → no identity violation
 test_null_login_service_account_pr_commit_exempt if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [42]})
 	pr := {
@@ -314,7 +317,7 @@ test_null_login_service_account_pr_commit_exempt if {
 # Multiple associated PRs (Option 2 — any PR passing is sufficient)
 # ---------------------------------------------------------------------------
 
-# Scenario 15 — Commit linked to two PRs; first has no approval, second does → PASS
+# Multi-PR — commit linked to two PRs; first has no approval, second does → PASS
 test_second_pr_approval_satisfies_check if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [41, 42]})
 	pr_no_approval := {
@@ -328,7 +331,7 @@ test_second_pr_approval_satisfies_check if {
 	count(violations) == 0 with input as make_input([c], {"41": pr_no_approval, "42": pr_with_approval})
 }
 
-# Scenario 16 — Commit linked to two PRs; neither has approval → FAIL
+# Multi-PR — commit linked to two PRs; neither has approval → FAIL
 test_no_pr_with_approval_fails if {
 	c := object.union(commit("abc1234", "alice", "feat: add feature", ["src/app.ts"]), {"pr_numbers": [41, 42]})
 	pr_no_approval := {
@@ -344,7 +347,7 @@ test_no_pr_with_approval_fails if {
 # Mixed: multiple commits, some pass some fail
 # ---------------------------------------------------------------------------
 
-# Scenario 12 — Multiple commits — only failing ones reported
+# Scenario 11 — Multiple commits — only failing ones reported
 test_only_failing_commits_reported if {
 	passing := object.union(commit("aaa1111", "svc_bot", "automated", ["src/app.ts"]), {"pr_numbers": []})
 	failing := commit("bbb2222", "alice", "feat: add feature", ["src/app.ts"])
