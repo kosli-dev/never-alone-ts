@@ -69,17 +69,38 @@ test_service_account_passes if {
 # Merge commits
 # ---------------------------------------------------------------------------
 
-# Scenario 3 — GitHub merge commit (multiple parents) — checked via PR
+# Scenario 3 — GitHub merge commit (multiple parents) — must be linked to a PR with independent approval
 test_merge_commit_multiple_parents_passes if {
 	c := {
 		"sha": "abc1234",
 		"parent_shas": ["parent1", "parent2"],
 		"author": {"login": "alice"},
 		"date": "2023-01-01T10:00:00Z",
-		"message": "feat: some feature",
+		"message": "Merge pull request #42 from alice/feature",
 		"changed_files": ["src/app.ts"],
+		"pr_numbers": [42],
 	}
-	count(violations) == 0 with input as make_input([c], {})
+	pr := {
+		"commits": [pr_commit_by("sha_alice", "alice")],
+		"approvals": [approval("bob", "2023-01-01T09:00:01Z")],
+	}
+	count(violations) == 0 with input as make_input([c], {"42": pr})
+}
+
+# Scenario 3 (no PR) — GitHub merge commit pushed directly without a PR → violation
+test_merge_commit_multiple_parents_no_pr_fails if {
+	c := {
+		"sha": "abc1234",
+		"parent_shas": ["parent1", "parent2"],
+		"author": {"login": "alice"},
+		"date": "2023-01-01T10:00:00Z",
+		"message": "Merge pull request #42 from alice/feature",
+		"changed_files": ["src/app.ts"],
+		"pr_numbers": [],
+	}
+	v := violations with input as make_input([c], {})
+	some msg in v
+	contains(msg, "no associated PR")
 }
 
 # Scenario 4 — Fake merge commit message — single-parent commit with "Merge pull request #" message
@@ -89,6 +110,21 @@ test_fake_merge_message_single_parent_requires_pr if {
 	v := violations with input as make_input([c], {})
 	some msg in v
 	contains(msg, "no associated PR")
+}
+
+# Scenario 4 (self-approval) — Fake merge commit linked to a PR but only self-approved → violation
+test_fake_merge_message_self_approval_fails if {
+	c := object.union(
+		commit("abc1234", "alice", "Merge pull request #42 from alice/feature", ["src/app.ts"]),
+		{"pr_numbers": [42]},
+	)
+	pr := {
+		"commits": [pr_commit_by("abc1234", "alice")],
+		"approvals": [approval("alice", "2023-01-01T10:00:01Z")],
+	}
+	v := violations with input as make_input([c], {"42": pr})
+	some msg in v
+	contains(msg, "independent approval")
 }
 
 # ---------------------------------------------------------------------------
