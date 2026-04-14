@@ -6,15 +6,17 @@ export class Collector {
   constructor(private github: GitHubClient, private repoPath: string = process.cwd()) {}
 
   async collectCommit(commit: CommitInfo): Promise<{ commitData: CommitData; prDetails: PRDetails[] }> {
-    const githubAuthor = await this.github.getCommitDetails(commit.sha);
+    const [githubAuthor, prNumbers, changedFiles] = await Promise.all([
+      this.github.getCommitDetails(commit.sha),
+      this.github.findPRForCommit(commit.sha),
+      Promise.resolve(getChangedFiles(commit.sha, this.repoPath)),
+    ]);
+
     if (githubAuthor) {
       commit.author.login = githubAuthor.login;
       commit.author.user_id = githubAuthor.user_id;
       commit.author.web_url = githubAuthor.web_url;
     }
-
-    const changedFiles = getChangedFiles(commit.sha, this.repoPath);
-    const prNumbers = await this.github.findPRForCommit(commit.sha);
 
     const prDetails = (
       await Promise.all(prNumbers.map(n => this.github.getPRFullDetails(n)))

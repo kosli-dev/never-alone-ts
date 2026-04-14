@@ -43,7 +43,16 @@ export class GitHubClient {
     }
   }
 
+  private prCache = new Map<number, Promise<PRDetails | undefined>>();
+
   async getPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
+    if (!this.prCache.has(prNumber)) {
+      this.prCache.set(prNumber, this._fetchPRFullDetails(prNumber));
+    }
+    return this.prCache.get(prNumber)!;
+  }
+
+  private async _fetchPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
     try {
       const [pr, reviews, commits] = await Promise.all([
         this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
