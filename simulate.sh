@@ -90,9 +90,11 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
   # 3. Attest the collected data to the trail
   ATT_FILE="${SCRIPT_DIR}/att_data_${CURRENT_TAG}.json"
   echo "  Attesting ${ATT_FILE}..."
-  kosli attest generic \
+  kosli attest custom \
+    --type "${KOSLI_ATTESTATION_NAME}" \
     --name "${KOSLI_ATTESTATION_NAME}" \
-    --user-data "${ATT_FILE}" \
+    --attestation-data "${ATT_FILE}" \
+    --annotate repo="https://github.com/${GITHUB_REPOSITORY}" \
     --trail "${COMMIT_SHA}" \
     --flow "${KOSLI_FLOW}"
 

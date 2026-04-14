@@ -103,17 +103,28 @@ When `--flow` is provided and `BASE_TAG` is not set, the tool queries Kosli for 
 
 This produces `att_data_<CURRENT_TAG>.json` in the working directory.
 
-### 2. Attest to a Kosli trail
+### 2. One-time: create the custom attestation type
+
+The `scr-data` attestation uses a custom Kosli type that validates the payload
+against `jsonschema.json` server-side. Create it once per org:
 
 ```bash
-kosli attest generic \
+bash setup-kosli-attestation-type.sh
+```
+
+### 3. Attest to a Kosli trail
+
+```bash
+kosli attest custom \
+  --type scr-data \
   --name scr-data \
-  --user-data att_data_v1.1.0.json \
+  --attestation-data att_data_v1.1.0.json \
+  --annotate repo=https://github.com/owner/repo \
   --flow my-kosli-flow \
   --trail release-v1.1.0
 ```
 
-### 3. Evaluate
+### 4. Evaluate
 
 ```bash
 kosli evaluate trail release-v1.1.0 \
@@ -124,7 +135,7 @@ kosli evaluate trail release-v1.1.0 \
 
 Exit code `0` = all commits comply. Exit code `1` = violations found.
 
-### 4. (Optional) Record the evaluation result
+### 5. (Optional) Record the evaluation result
 
 Use `--compliant=false` when the policy found violations (exit code `1`):
 
@@ -166,7 +177,7 @@ kosli evaluate trail release-v1.2.3 \
   --output json
 ```
 
-Generic attestation user-data is available at `input.trail.compliance_status.attestations_statuses["scr-data"].user_data`. Use `--show-input` to verify the exact structure in your environment.
+Custom attestation payload is available at `input.trail.compliance_status.attestations_statuses["scr-data"].attestation_data`. Use `--show-input` to verify the exact structure in your environment.
 
 ## Documentation
 

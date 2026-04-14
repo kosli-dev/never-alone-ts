@@ -9,13 +9,15 @@ allow if count(violations) == 0
 # ---------------------------------------------------------------------------
 # Attestation data
 #
-# Generic attestation user_data is available at:
-#   input.trail.compliance_status.attestations_statuses[<name>].user_data
+# Custom attestation payload is available at:
+#   input.trail.compliance_status.attestations_statuses[<name>].attestation_data
+#
+# (Generic attestations use .user_data; custom attestations use .attestation_data)
 #
 # Verify the exact path in your environment with:
 #   kosli evaluate trail <trail> --policy four-eyes.rego --show-input --output json
 # ---------------------------------------------------------------------------
-attestation := input.trail.compliance_status.attestations_statuses["scr-data"].user_data
+attestation := input.trail.compliance_status.attestations_statuses["scr-data"].attestation_data
 
 # ---------------------------------------------------------------------------
 # Behaviour: post-approval merge-from-base commits
@@ -119,6 +121,11 @@ has_any_pr_approval(commit) if {
 # ---------------------------------------------------------------------------
 # Violations
 # ---------------------------------------------------------------------------
+
+violations contains msg if {
+	not input.trail.compliance_status.attestations_statuses["scr-data"]
+	msg := "scr-data attestation is missing from the trail"
+}
 
 violations contains msg if {
 	some _, pr in attestation.pull_requests

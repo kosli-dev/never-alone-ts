@@ -10,7 +10,7 @@ exemptions := {
 	"serviceAccounts": ["svc_.*"],
 }
 
-make_input(commits, pull_requests) := {"trail": {"compliance_status": {"attestations_statuses": {"scr-data": {"user_data": {
+make_input(commits, pull_requests) := {"trail": {"compliance_status": {"attestations_statuses": {"scr-data": {"attestation_data": {
 	"config": {"exemptions": exemptions},
 	"commits": commits,
 	"pull_requests": pull_requests,
@@ -43,6 +43,17 @@ pr_commit_by(sha, login) := {
 }
 
 approval(login, approved_at) := {"user": {"login": login}, "approved_at": approved_at}
+
+# ---------------------------------------------------------------------------
+# Missing attestation
+# ---------------------------------------------------------------------------
+
+# Scenario 0 — scr-data attestation absent from trail → violation fires
+test_missing_attestation_fails if {
+	v := violations with input as {"trail": {"compliance_status": {"attestations_statuses": {}}}}
+	some msg in v
+	contains(msg, "scr-data attestation is missing")
+}
 
 # ---------------------------------------------------------------------------
 # Service account
