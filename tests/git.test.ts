@@ -33,19 +33,18 @@ describe('Git Interaction', () => {
     expect(files).toEqual(['file1.txt', 'file2.js']);
   });
 
-  it('should detect merge commit', () => {
-    (execSync as jest.Mock)
-      .mockReturnValueOnce('p1 p2') // First call for parents
-      .mockReturnValueOnce('Merge pull request #123'); // Second call for subject
-      
+  it('should detect merge commit by parent count', () => {
+    (execSync as jest.Mock).mockReturnValueOnce('p1 p2');
     expect(isMergeCommit('sha123')).toBe(true);
   });
 
   it('should not detect non-merge commit', () => {
-    (execSync as jest.Mock)
-      .mockReturnValueOnce('p1') // First call for parents
-      .mockReturnValueOnce('feat: some feature'); // Second call for subject
-      
+    (execSync as jest.Mock).mockReturnValueOnce('p1');
+    expect(isMergeCommit('sha123')).toBe(false);
+  });
+
+  it('should not treat "Merge pull request #" message as merge commit when single parent', () => {
+    (execSync as jest.Mock).mockReturnValueOnce('p1');
     expect(isMergeCommit('sha123')).toBe(false);
   });
 });
