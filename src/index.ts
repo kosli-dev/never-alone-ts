@@ -1,4 +1,5 @@
 import * as path from 'path';
+import pLimit from 'p-limit';
 import { loadConfig } from './config';
 import { getCommits, resolveSHA } from './git';
 import { GitHubClient } from './github';
@@ -47,9 +48,15 @@ async function main() {
     const collectedCommits: CommitData[] = [];
     const pullRequests: Record<string, PRDetails> = {};
 
-    for (const commit of commits) {
-      console.log(`Collecting commit ${commit.sha.substring(0, 7)}: ${commit.message.substring(0, 30)}...`);
-      const { commitData, prDetails } = await collector.collectCommit(commit);
+    const limit = pLimit(4);
+    const results = await Promise.all(
+      commits.map(commit => limit(async () => {
+        console.log(`Collecting commit ${commit.sha.substring(0, 7)}: ${commit.message.substring(0, 30)}...`);
+        return collector.collectCommit(commit);
+      }))
+    );
+
+    for (const { commitData, prDetails } of results) {
       collectedCommits.push(commitData);
       for (const pr of prDetails) {
         pullRequests[pr.number.toString()] = pr;
