@@ -13,8 +13,6 @@ const mockConfig: Config = {
   kosliAttestationName: 'scr-data',
   exemptions: {
     serviceAccounts: ['svc_.*'],
-    filePaths: ['docs/release-notes.md'],
-    fileNames: ['README.md'],
   },
 };
 

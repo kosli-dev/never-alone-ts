@@ -27,8 +27,6 @@ describe('Config Loader', () => {
     const mockConfig = {
       exemptions: {
         serviceAccounts: ['svc_.*'],
-        filePaths: ['docs/release-notes.md'],
-        fileNames: ['README.md'],
       },
     };
 
@@ -39,7 +37,6 @@ describe('Config Loader', () => {
 
     expect(config.currentTag).toBe('v1.1.0');
     expect(config.exemptions.serviceAccounts).toContain('svc_.*');
-    expect(config.exemptions.filePaths).toContain('docs/release-notes.md');
   });
 
   it('should throw error if required environment variables are missing', () => {

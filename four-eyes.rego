@@ -85,7 +85,7 @@ has_independent_approval(commit, pr) if {
 }
 
 # ---------------------------------------------------------------------------
-# Exemption checks (rules read from the attested config)
+# Service account exemption
 # ---------------------------------------------------------------------------
 
 is_service_account(commit) if {
@@ -96,25 +96,6 @@ is_service_account(commit) if {
 is_service_account(commit) if {
 	some pattern in attestation.config.exemptions.serviceAccounts
 	regex.match(pattern, commit.author.login)
-}
-
-is_exempt_file(file) if {
-	some exempt_path in attestation.config.exemptions.filePaths
-	file == exempt_path
-}
-
-is_exempt_file(file) if {
-	parts := split(file, "/")
-	basename := parts[count(parts) - 1]
-	some name in attestation.config.exemptions.fileNames
-	basename == name
-}
-
-all_files_exempt(commit) if {
-	count(commit.changed_files) > 0
-	every file in commit.changed_files {
-		is_exempt_file(file)
-	}
 }
 
 is_merge_commit(commit) if {
@@ -153,7 +134,6 @@ violations contains msg if {
 violations contains msg if {
 	some commit in attestation.commits
 	not is_service_account(commit)
-	not all_files_exempt(commit)
 	not is_merge_commit(commit)
 	count(commit.pr_numbers) == 0
 	msg := sprintf(
@@ -165,7 +145,6 @@ violations contains msg if {
 violations contains msg if {
 	some commit in attestation.commits
 	not is_service_account(commit)
-	not all_files_exempt(commit)
 	not is_merge_commit(commit)
 	count(commit.pr_numbers) > 0
 	not has_any_pr_approval(commit)

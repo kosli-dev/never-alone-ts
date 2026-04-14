@@ -7,8 +7,6 @@ export interface Config {
   kosliAttestationName: string;
   exemptions: {
     serviceAccounts: string[];
-    filePaths: string[];
-    fileNames: string[];
   };
 }
 
@@ -76,8 +74,6 @@ export interface AttestationData {
   config: {
     exemptions: {
       serviceAccounts: string[];
-      filePaths: string[];
-      fileNames: string[];
     };
   };
   commits: CommitData[];

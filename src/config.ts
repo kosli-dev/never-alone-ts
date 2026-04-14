@@ -37,8 +37,6 @@ export function loadConfig(options: { configPath?: string; envFile?: string } = 
     kosliAttestationName,
     exemptions: {
       serviceAccounts: configFile.exemptions?.serviceAccounts || [],
-      filePaths: configFile.exemptions?.filePaths || [],
-      fileNames: configFile.exemptions?.fileNames || [],
     },
   };
 }

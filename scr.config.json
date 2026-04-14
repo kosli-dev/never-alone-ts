@@ -1,16 +1,7 @@
 {
   "exemptions": {
     "serviceAccounts": [
-      "svc_.*",
-      "CPTCLDEG.*",
-      "app-repo-plugin-default"
-    ],
-    "filePaths": [
-      "docs/release-notes.md"
-    ],
-    "fileNames": [
-      "README.md",
-      ".gitignore"
+      "svc_.*"
     ]
   }
 }

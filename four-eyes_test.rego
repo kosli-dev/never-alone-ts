@@ -8,8 +8,6 @@ import rego.v1
 
 exemptions := {
 	"serviceAccounts": ["svc_.*"],
-	"filePaths": ["docs/release-notes.md"],
-	"fileNames": ["README.md"],
 }
 
 make_input(commits, pull_requests) := {"trail": {"compliance_status": {"attestations_statuses": {"scr-data": {"user_data": {
@@ -54,30 +52,6 @@ approval(login, approved_at) := {"user": {"login": login}, "approved_at": approv
 test_service_account_passes if {
 	c := commit("abc1234", "svc_deployer", "automated", ["src/app.ts"])
 	count(violations) == 0 with input as make_input([c], {})
-}
-
-# ---------------------------------------------------------------------------
-# Exempted files
-# ---------------------------------------------------------------------------
-
-# Scenario 3 — Exempted files only
-test_exempt_filename_passes if {
-	c := commit("abc1234", "alice", "update readme", ["README.md"])
-	count(violations) == 0 with input as make_input([c], {})
-}
-
-# Scenario 3 — Exempted files only
-test_exempt_filepath_passes if {
-	c := commit("abc1234", "alice", "update release notes", ["docs/release-notes.md"])
-	count(violations) == 0 with input as make_input([c], {})
-}
-
-# Scenario 4 — Mixed files — some exempt, some not
-test_mixed_files_not_exempt if {
-	c := commit("abc1234", "alice", "update stuff", ["README.md", "src/app.ts"])
-	v := violations with input as make_input([c], {})
-	some msg in v
-	contains(msg, "abc1234")
 }
 
 # ---------------------------------------------------------------------------

@@ -30,9 +30,8 @@ The collector gathers facts (commit authors, changed files, PR approvals, commit
 Each commit is checked in order; the first matching rule determines its status:
 
 1. **Service account** — commit author matches a service account pattern → PASS
-2. **Exempted files** — all changed files are exempted by path or filename → PASS
-3. **Merge commit** — GitHub merge commit (multiple parents or `Merge pull request #` message) → PASS
-4. **PR approval** — commit is linked to a merged PR with at least one independent approval after the latest code commit → PASS / else FAIL
+2. **Merge commit** — GitHub merge commit (multiple parents or `Merge pull request #` message) → PASS
+3. **PR approval** — commit is linked to a merged PR with at least one independent approval after the latest code commit → PASS / else FAIL
 
 For named test cases with git diagrams and expected outcomes for each rule, see [SCENARIOS.md](SCENARIOS.md).
 
@@ -70,9 +69,7 @@ Place `scr.config.json` in the root of the repository being scanned:
 ```json
 {
   "exemptions": {
-    "serviceAccounts": ["svc_.*", "bot-account"],
-    "filePaths": ["docs/release-notes.md"],
-    "fileNames": ["package.json", "README.md", ".gitignore"]
+    "serviceAccounts": ["svc_.*", "bot-account"]
   }
 }
 ```

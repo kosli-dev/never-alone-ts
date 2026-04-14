@@ -20,7 +20,6 @@ Every code change that reaches a production release must have been reviewed and 
 The control operationalises this by examining all commits in a release range (the delta between two tags) and verifying that each one either:
 
 - was authored by an automated agent (service account) that is trusted by policy, or
-- only touches files that are categorically low-risk (exempt by path or name), or
 - is a merge commit created by the VCS (not a human-authored change), or
 - was delivered via a pull request that received at least one independent approval *after* the last code commit in that PR.
 
@@ -73,7 +72,7 @@ git log --first-parent BASE_TAG..CURRENT_TAG
   "repository": "owner/repo",
   "range": { "base": "v1.0.0", "current": "v1.1.0", "base_sha": "...", "current_sha": "..." },
   "generated_at": "<ISO-8601>",
-  "config": { "exemptions": { "serviceAccounts": [], "filePaths": [], "fileNames": [] } },
+  "config": { "exemptions": { "serviceAccounts": [] } },
   "commits": [
     {
       "sha": "<40-char>",
@@ -109,11 +108,10 @@ The Rego policy evaluates the attestation in a single pass. For each commit it a
 For each commit in attestation.commits:
 
   1. Is the author a service account?         → PASS (exempt)
-  2. Are ALL changed files on the exempt list? → PASS (exempt)
-  3. Is this a merge commit?                   → PASS (exempt)
+  2. Is this a merge commit?                   → PASS (exempt)
      (multiple parents  OR  "Merge pull request #" message)
-  4. No associated PR number?                  → FAIL
-  5. PR found — does it have an independent
+  3. No associated PR number?                  → FAIL
+  4. PR found — does it have an independent
      approval after the latest code commit?    → PASS / FAIL
 ```
 
@@ -179,7 +177,7 @@ has_independent_approval(commit, pr) if {
     time.parse_rfc3339_ns(approval.approved_at) > cutoff
 }
 
-# Exemption checks
+# Service account exemption
 is_service_account(commit) if {
     some pattern in attestation.config.exemptions.serviceAccounts
     regex.match(pattern, commit.author.git_name)
@@ -190,23 +188,6 @@ is_service_account(commit) if {
     regex.match(pattern, commit.author.login)
 }
 
-is_exempt_file(file) if {
-    some exempt_path in attestation.config.exemptions.filePaths
-    file == exempt_path
-}
-
-is_exempt_file(file) if {
-    parts := split(file, "/")
-    basename := parts[count(parts) - 1]
-    some name in attestation.config.exemptions.fileNames
-    basename == name
-}
-
-all_files_exempt(commit) if {
-    count(commit.changed_files) > 0
-    every file in commit.changed_files { is_exempt_file(file) }
-}
-
 is_merge_commit(commit) if { count(commit.parent_shas) > 1 }
 is_merge_commit(commit) if { startswith(commit.message, "Merge pull request #") }
 
@@ -214,7 +195,6 @@ is_merge_commit(commit) if { startswith(commit.message, "Merge pull request #") 
 violations contains msg if {
     some commit in attestation.commits
     not is_service_account(commit)
-    not all_files_exempt(commit)
     not is_merge_commit(commit)
     not commit.pr_number
     msg := sprintf(
@@ -226,7 +206,6 @@ violations contains msg if {
 violations contains msg if {
     some commit in attestation.commits
     not is_service_account(commit)
-    not all_files_exempt(commit)
     not is_merge_commit(commit)
     commit.pr_number
     pr := attestation.pull_requests[sprintf("%d", [commit.pr_number])]
@@ -247,8 +226,6 @@ All configuration lives in `scr.config.json` at the repository root and is embed
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `exemptions.serviceAccounts` | `string[]` | `[]` | Regex patterns matched against `git_name` and `login`. Commits by matching authors are fully exempt. |
-| `exemptions.filePaths` | `string[]` | `[]` | Exact file paths. A commit is exempt if every changed file matches one of these paths. |
-| `exemptions.fileNames` | `string[]` | `[]` | Bare filenames (basename only). A commit is exempt if every changed file's basename matches one of these names. |
 | `post_approval_merge_commits` | `"ignore"` \| `"strict"` | `"strict"` | Controls whether merge-from-base commits count against the approval timestamp. Set in `four-eyes.rego` directly. |
 
 **Environment variables (collector):**
@@ -269,7 +246,6 @@ All configuration lives in `scr.config.json` at the repository root and is embed
 | Exemption type | Condition | Rationale |
 | --- | --- | --- |
 | Service account | Author name or login matches a regex in `serviceAccounts` | Automated commits (dependency updates, release scripts, CI bots) are not human-authored and cannot have a human reviewer. The service account identity itself is the control — access to that credential is the review gate. |
-| Exempt files | All changed files match `filePaths` or `fileNames` | Certain file types carry negligible code-execution risk (documentation, `.gitignore`, changelogs). Requiring review for these adds friction with no security benefit. |
 | Merge commit | Multiple parents or `Merge pull request #` message | GitHub's merge commits are structural — they record that a PR was merged, not that new code was introduced. The code itself was already in the PR commits, which are evaluated separately. |
 
 ---
@@ -291,17 +267,15 @@ See [`SCENARIOS.md`](SCENARIOS.md) for the full set of named test cases with dia
 | --- | --- | --- |
 | 1 | Standard PR with independent approval | PASS |
 | 2 | Service account commit | PASS |
-| 3 | Exempted files only | PASS |
-| 4 | Mixed files — some exempt, some not | FAIL |
-| 5 | GitHub merge commit | PASS |
-| 6 | Commit pushed directly to main — no PR | FAIL |
-| 7 | PR exists but has no approvals | FAIL |
-| 8 | Self-approval only | FAIL |
-| 9 | New code pushed after approval | FAIL |
-| 10 | Post-approval merge-from-base (`ignore` mode) | PASS |
-| 11 | Post-approval merge-from-base (`strict` mode) | FAIL |
-| 12 | All PR commits are merge-from-base — fallback (`ignore` mode) | PASS |
-| 13 | Multiple commits — only failing ones reported | FAIL (partial) |
+| 3 | GitHub merge commit | PASS |
+| 4 | Commit pushed directly to main — no PR | FAIL |
+| 5 | PR exists but has no approvals | FAIL |
+| 6 | Self-approval only | FAIL |
+| 7 | New code pushed after approval | FAIL |
+| 8 | Post-approval merge-from-base (`ignore` mode) | PASS |
+| 9 | Post-approval merge-from-base (`strict` mode) | FAIL |
+| 10 | All PR commits are merge-from-base — fallback (`ignore` mode) | PASS |
+| 11 | Multiple commits — only failing ones reported | FAIL (partial) |
 
 ---
 
@@ -332,7 +306,6 @@ When the control fails, the violation message identifies the commit SHA and the 
 | --- | --- | --- |
 | Developer syncs feature branch with `main` after approval (`Merge branch 'main' into feature-x`) | In `strict` mode this merge-from-base commit post-dates the approval | Switch `post_approval_merge_commits` to `"ignore"` in `four-eyes.rego` |
 | Bot commits not matching any `serviceAccounts` pattern | The author name is not in the exemption list | Add the bot's `git_name` or `login` pattern to `serviceAccounts` in `scr.config.json` |
-| Documentation-only commits touching a file not in the exempt list | The file extension or name is not in `fileNames`/`filePaths` | Add the filename or path to the appropriate exemption list |
 
 ---
 
@@ -367,8 +340,6 @@ Full TypeScript types are defined in `src/types.ts`. The top-level shape is:
   config: {
     exemptions: {
       serviceAccounts: string[];
-      filePaths: string[];
-      fileNames: string[];
     };
   };
   commits: CommitData[];
