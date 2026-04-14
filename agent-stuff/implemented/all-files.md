@@ -97,4 +97,4 @@ Remove the three Rego rules that implement file exemption logic and the guards t
 
 - `npm run build` (or `tsc --noEmit`) must pass with no type errors.
 - `npm test` must pass — all file-exemption tests deleted, remaining tests green.
-- `opa test four-eyes.rego four-eyes_test.rego` must pass — deleted Rego tests removed, remaining scenarios still passing.
+- `opa test four-eyes.rego four-eyes_test.rego` must pass — deleted Rego tests removed, remaining scenarios still passing. Please use the docker image of rego for evaluation.
