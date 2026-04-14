@@ -3,8 +3,8 @@ set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 export KOSLI_ORG="sofus-test"           # Kosli organisation name
-
-KOSLI_FLOW="cli-simulation-nobase"             # Flow to create and populate
+TIMESTAMP=$(date -u +"%Y%m%d%H%M%S")   # Unique suffix for flow name
+KOSLI_FLOW="cli-simulation-demo-${TIMESTAMP}"             # Flow to create and populate
 KOSLI_ATTESTATION_NAME="scr-data"       # Attestation name written to each trail
 
 CLEANUP="false"                          # Set to "false" to keep att_data_*.json files
@@ -38,7 +38,7 @@ if [[ ! -f "${SCRIPT_DIR}/dist/index.js" ]]; then
   npm --prefix "${SCRIPT_DIR}" run build
 fi
 
-# ── Create flow (idempotent — safe to re-run) ─────────────────────────────────
+# ── Create flow  ─────────────────────────────────
 echo "Creating Kosli flow: ${KOSLI_FLOW}..."
 kosli create flow "${KOSLI_FLOW}" \
   --description "Simulation of never-alone SCR verification against kosli-dev/cli" \
@@ -103,6 +103,7 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
   kosli evaluate trail "${COMMIT_SHA}" \
     --policy "${SCRIPT_DIR}/four-eyes.rego" \
     --flow "${KOSLI_FLOW}" \
+    --show-input \
     --output json > "${EVAL_FILE}" || EVAL_EXIT=$?
 
   # 5. Attest the evaluation result (with the policy file attached for auditability)

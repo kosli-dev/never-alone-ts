@@ -45,23 +45,13 @@
       "properties": {
         "exemptions": {
           "type": "object",
-          "required": ["serviceAccounts", "filePaths", "fileNames"],
+          "required": ["serviceAccounts"],
           "additionalProperties": false,
           "properties": {
             "serviceAccounts": {
               "type": "array",
               "items": { "type": "string" },
               "description": "Regex patterns matching service account logins to exempt"
-            },
-            "filePaths": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "File paths to exempt from review requirements"
-            },
-            "fileNames": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "File names to exempt from review requirements"
             }
           }
         }
