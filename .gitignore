@@ -2,4 +2,5 @@ node_modules
 dist
 build
 .env
-att_report*.json
+att_data*.json
+eval_result*.json
