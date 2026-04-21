@@ -1,5 +1,5 @@
 import { KosliClient } from './kosli';
-import { getCommitHistory, getTagForCommit, getInitialCommit } from './git';
+import { getCommitHistory, getInitialCommit } from './git';
 
 export async function resolveBaseTag(
   flow: string,
@@ -12,16 +12,17 @@ export async function resolveBaseTag(
 
   const history = getCommitHistory(currentTag, repoPath);
 
-  // Skip the first entry — that is currentTag itself
+  // Skip the first entry — that is currentTag itself.
+  // In the per-commit model every trail IS a commit SHA, so we return the
+  // SHA directly. git log SHA..CURRENT_TAG works the same as with a tag name.
   for (const sha of history.slice(1)) {
     if (qualifyingSHAs.has(sha)) {
-      const tag = getTagForCommit(sha, repoPath);
-      console.log(`Found previous attestation at ${sha}${tag ? ` (${tag})` : ''}`);
-      return tag ?? sha;
+      console.error(`Found previous attestation at ${sha}`);
+      return sha;
     }
   }
 
   const initial = getInitialCommit(repoPath);
-  console.log(`No previous attestation found — using initial commit ${initial}`);
+  console.error(`No previous attestation found — using initial commit ${initial}`);
   return initial;
 }

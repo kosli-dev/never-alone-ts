@@ -80,6 +80,24 @@ export function getInitialCommit(repoPath: string = process.cwd()): string {
   }
 }
 
+export function getSingleCommit(sha: string, repoPath: string = process.cwd()): CommitInfo {
+  const command = `git show -s --pretty="format:%H||%P||%an||%ae||%aI||%s" ${sha}`;
+  try {
+    const output = execSync(command, { encoding: 'utf8', cwd: repoPath });
+    const [shaOut, parents, name, email, dateStr, message] = output.trim().split('||');
+    return {
+      sha: shaOut,
+      parent_shas: parents ? parents.trim().split(' ') : [],
+      author: { git_name: name, git_email: email },
+      date: new Date(dateStr),
+      message,
+    };
+  } catch (error) {
+    console.error(`Error getting single commit ${sha}: ${error}`);
+    throw error;
+  }
+}
+
 export function isMergeCommit(sha: string, repoPath: string = process.cwd()): boolean {
   try {
     const parentCount = execSync(`git show -s --format=%p ${sha}`, { encoding: 'utf8', cwd: repoPath }).trim().split(' ').length;

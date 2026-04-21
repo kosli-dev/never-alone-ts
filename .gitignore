@@ -4,3 +4,4 @@ build
 .env
 att_data*.json
 eval_result*.json
+raw_*.json

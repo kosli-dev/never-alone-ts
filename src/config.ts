@@ -3,6 +3,40 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Config } from './types';
 
+export function loadGranularConfig(options: { configPath?: string; envFile?: string } = {}): {
+  githubRepository: string;
+  githubToken: string;
+  exemptions: { serviceAccounts: string[] };
+} {
+  const {
+    configPath = path.resolve(process.cwd(), 'scr.config.json'),
+    envFile,
+  } = options;
+
+  dotenv.config(envFile ? { path: envFile } : {});
+
+  const githubRepository = process.env.GITHUB_REPOSITORY || '';
+  const githubToken = process.env.GITHUB_TOKEN || '';
+
+  if (!githubRepository || !githubToken) {
+    throw new Error('Missing required environment variables (GITHUB_REPOSITORY, GITHUB_TOKEN).');
+  }
+
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`scr.config.json file not found at: ${configPath}`);
+  }
+
+  const configFile = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+  return {
+    githubRepository,
+    githubToken,
+    exemptions: {
+      serviceAccounts: configFile.exemptions?.serviceAccounts || [],
+    },
+  };
+}
+
 export function loadConfig(options: { configPath?: string; envFile?: string } = {}): Config {
   const {
     configPath = path.resolve(process.cwd(), 'scr.config.json'),

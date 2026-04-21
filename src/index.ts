@@ -1,12 +1,11 @@
 import * as path from 'path';
 import pLimit from 'p-limit';
-import { loadConfig } from './config';
-import { getCommits, resolveSHA } from './git';
+import { loadConfig, loadGranularConfig } from './config';
+import { getCommits, getSingleCommit } from './git';
 import { GitHubClient } from './github';
 import { Collector } from './evaluator';
-import { generateAttestationData } from './reporter';
+import { generateGranularAttestation } from './reporter';
 import { resolveBaseTag } from './baseTagResolver';
-import { CommitData, PRDetails } from './types';
 
 function parsePathArg(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
@@ -24,7 +23,27 @@ async function main() {
     const repoPath = parsePathArg(args, '--repo') ?? process.cwd();
     const configPath = parsePathArg(args, '--config');
     const envFile = parsePathArg(args, '--env-file');
+    const commitSha = parseStringArg(args, '--commit');
 
+    // ─── Per-commit (granular) mode ───────────────────────────────────────────
+    if (commitSha) {
+      const config = loadGranularConfig({ configPath, envFile });
+      const github = new GitHubClient(config.githubRepository, config.githubToken);
+      const collector = new Collector(github, repoPath);
+
+      console.log(`Collecting commit ${commitSha.substring(0, 7)} from ${config.githubRepository}`);
+      const commit = getSingleCommit(commitSha, repoPath);
+      const { commitSummary, pullRequests, rawData } = await collector.collectCommitGranular(commit);
+      generateGranularAttestation(commitSummary, pullRequests, rawData, config);
+
+      process.exit(0);
+      return;
+    }
+
+    // ─── Range (batch) mode ───────────────────────────────────────────────────
+    // Writes one att_data_<sha>.json + raw_<sha>.json per commit in range.
+    // If BASE_TAG is not set but KOSLI_FLOW is, the base is auto-resolved from
+    // the most recent attested commit in that flow.
     const config = loadConfig({ configPath, envFile });
 
     const flow = parseStringArg(args, '--flow') || config.kosliFlow;
@@ -39,31 +58,17 @@ async function main() {
     console.log(`Analyzing repository: ${repoPath}`);
     console.log(`Range: ${config.baseTag || 'Repository Start'} to ${config.currentTag}`);
 
-    const baseSha = resolveSHA(config.baseTag, repoPath);
-    const currentSha = resolveSHA(config.currentTag, repoPath);
-
     const commits = getCommits(config.baseTag, config.currentTag, repoPath);
     console.log(`Found ${commits.length} commits.`);
 
-    const collectedCommits: CommitData[] = [];
-    const pullRequests: Record<string, PRDetails> = {};
-
     const limit = pLimit(4);
-    const results = await Promise.all(
+    await Promise.all(
       commits.map(commit => limit(async () => {
         console.log(`Collecting commit ${commit.sha.substring(0, 7)}: ${commit.message.substring(0, 30)}...`);
-        return collector.collectCommit(commit);
+        const { commitSummary, pullRequests, rawData } = await collector.collectCommitGranular(commit);
+        generateGranularAttestation(commitSummary, pullRequests, rawData, config);
       }))
     );
-
-    for (const { commitData, prDetails } of results) {
-      collectedCommits.push(commitData);
-      for (const pr of prDetails) {
-        pullRequests[pr.number.toString()] = pr;
-      }
-    }
-
-    generateAttestationData(collectedCommits, pullRequests, config, baseSha, currentSha);
 
     process.exit(0);
   } catch (error) {
