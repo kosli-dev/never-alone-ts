@@ -1,7 +1,0 @@
-{
-  "exemptions": {
-    "serviceAccounts": [
-      "svc_.*"
-    ]
-  }
-}

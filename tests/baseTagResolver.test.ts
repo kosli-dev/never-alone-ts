@@ -1,6 +1,6 @@
 import { resolveBaseTag } from '../src/baseTagResolver';
 import { KosliClient } from '../src/kosli';
-import { getCommitHistory, getTagForCommit, getInitialCommit } from '../src/git';
+import { getCommitHistory, getInitialCommit } from '../src/git';
 
 jest.mock('../src/kosli');
 jest.mock('../src/git');
@@ -22,21 +22,9 @@ describe('resolveBaseTag', () => {
     (getInitialCommit as jest.Mock).mockReturnValue(SHA_INITIAL);
   });
 
-  it('should return the git tag when a matching commit has one', async () => {
-    // History: SHA_A (current) → SHA_B (has attestation, has tag) → SHA_C
+  it('should return the commit SHA when a matching commit is found', async () => {
+    // History: SHA_A (current) → SHA_B (has attestation) → SHA_C
     (getCommitHistory as jest.Mock).mockReturnValue([SHA_A, SHA_B, SHA_C]);
-    (getTagForCommit as jest.Mock).mockReturnValue('v1.0.0');
-    mockListTrails.mockResolvedValue(new Set([SHA_B]));
-
-    const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
-
-    expect(result).toBe('v1.0.0');
-    expect(getTagForCommit).toHaveBeenCalledWith(SHA_B, '/repo');
-  });
-
-  it('should return the commit SHA when a matching commit has no tag', async () => {
-    (getCommitHistory as jest.Mock).mockReturnValue([SHA_A, SHA_B, SHA_C]);
-    (getTagForCommit as jest.Mock).mockReturnValue(undefined);
     mockListTrails.mockResolvedValue(new Set([SHA_B]));
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
@@ -56,7 +44,6 @@ describe('resolveBaseTag', () => {
   it('should skip the first commit in history (currentTag itself)', async () => {
     // SHA_A is currentTag — even though it has an attestation it must be skipped
     (getCommitHistory as jest.Mock).mockReturnValue([SHA_A, SHA_B]);
-    (getTagForCommit as jest.Mock).mockReturnValue(undefined);
     mockListTrails.mockResolvedValue(new Set([SHA_A, SHA_B]));
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
@@ -67,7 +54,6 @@ describe('resolveBaseTag', () => {
   it('should return the closest (most recent) matching commit', async () => {
     // Both SHA_B and SHA_C qualify — SHA_B is closer
     (getCommitHistory as jest.Mock).mockReturnValue([SHA_A, SHA_B, SHA_C]);
-    (getTagForCommit as jest.Mock).mockReturnValue(undefined);
     mockListTrails.mockResolvedValue(new Set([SHA_B, SHA_C]));
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');

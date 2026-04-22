@@ -1,31 +1,37 @@
 import * as fs from 'fs';
-import { AttestationData, CommitData, Config, PRDetails } from './types';
+import { CommitAttestation, CommitSummary, PRSummary, RawAttachment, RawPRData } from './types';
 
-export function generateAttestationData(
-  commits: CommitData[],
-  pullRequests: Record<string, PRDetails>,
-  config: Config,
-  baseSha?: string,
-  currentSha?: string,
+export function generateGranularAttestation(
+  commitSummary: CommitSummary,
+  pullRequests: PRSummary[],
+  rawData: { githubCommit: unknown; prRaws: RawPRData[] },
+  config: { githubRepository: string },
 ): void {
-  const filename = `att_data_${config.currentTag}.json`;
+  const sha = commitSummary.sha;
+  const generatedAt = new Date().toISOString();
 
-  const attestation: AttestationData = {
+  const attestation: CommitAttestation = {
+    commit_sha: sha,
     repository: config.githubRepository,
-    range: {
-      base: config.baseTag,
-      base_sha: baseSha,
-      current: config.currentTag,
-      current_sha: currentSha,
-    },
-    generated_at: new Date().toISOString(),
-    config: {
-      exemptions: config.exemptions,
-    },
-    commits,
+    generated_at: generatedAt,
+    commit: commitSummary,
     pull_requests: pullRequests,
   };
 
-  fs.writeFileSync(filename, JSON.stringify(attestation, null, 2));
-  console.log(`Attestation data generated: ${filename}`);
+  const raw: RawAttachment = {
+    commit_sha: sha,
+    provider: 'github',
+    generated_at: generatedAt,
+    github_commit: rawData.githubCommit,
+    pull_requests: rawData.prRaws,
+  };
+
+  const attFile = `att_data_${sha}.json`;
+  const rawFile = `raw_${sha}.json`;
+
+  fs.writeFileSync(attFile, JSON.stringify(attestation, null, 2));
+  console.log(`Attestation data generated: ${attFile}`);
+
+  fs.writeFileSync(rawFile, JSON.stringify(raw, null, 2));
+  console.log(`Raw attachment generated: ${rawFile}`);
 }

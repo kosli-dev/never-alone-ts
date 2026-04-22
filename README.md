@@ -62,19 +62,19 @@ npm run build
 | `KOSLI_FLOW` | No | Kosli flow name to search for the previous attestation when auto-resolving `BASE_TAG`. |
 | `KOSLI_ATTESTATION_NAME` | No | Name of the attestation to look for in Kosli trails. Defaults to `scr-data`. |
 
-### 2. `scr.config.json`
+### 2. Service account exemptions
 
-Place `scr.config.json` in the root of the repository being scanned:
+Service accounts are defined as a Rego constant in `four-eyes.rego`. The defaults cover common GitHub bots:
 
-```json
-{
-  "exemptions": {
-    "serviceAccounts": ["svc_.*", "bot-account"]
-  }
+```rego
+service_account_patterns := {
+    "svc_.*",
+    "dependabot\\[bot\\]",
+    "github-actions\\[bot\\]",
 }
 ```
 
-The exemptions are embedded in the attestation output and read by the Rego policy at evaluation time.
+To add an exemption, add a regex pattern to this set. Patterns are matched against both `git_name` and `login`.
 
 ## Usage
 
@@ -83,9 +83,9 @@ The exemptions are embedded in the attestation output and read by the Rego polic
 | Flag | Description |
 | :--- | :--- |
 | `--repo <path>` | Path to the git repository to analyse. Defaults to the current directory. |
-| `--config <path>` | Path to `scr.config.json`. Defaults to `scr.config.json` in the current directory. |
 | `--env-file <path>` | Path to a `.env` file to load. Defaults to dotenv's standard behaviour. |
 | `--flow <name>` | Kosli flow name for auto-resolving `BASE_TAG`. Overrides `KOSLI_FLOW`. |
+| `--commit <sha>` | Process a single commit (granular mode). Requires only `GITHUB_REPOSITORY` and `GITHUB_TOKEN`. |
 
 ### 1. Collect data
 
@@ -101,7 +101,7 @@ CURRENT_TAG=v1.1.0 npm start -- --repo /path/to/repo --flow my-kosli-flow
 
 When `--flow` is provided and `BASE_TAG` is not set, the tool queries Kosli for the most recent commit in the git history that has a trail with the target attestation, and uses that as the base. If none is found it falls back to the repository's first commit.
 
-This produces `att_data_<CURRENT_TAG>.json` in the working directory.
+This produces one `att_data_<sha>.json` + `raw_<sha>.json` pair per commit in the range.
 
 ### 2. One-time: create the custom attestation type
 
@@ -151,7 +151,7 @@ kosli attest generic \
 
 ## Policy: `four-eyes.rego`
 
-The policy implements the four-eyes evaluation rules in Rego. It reads exemption configuration from the attested data so that `scr.config.json` remains the single source of truth.
+The policy implements the four-eyes evaluation rules in Rego. Service account exemptions and other policy constants are defined directly in `four-eyes.rego` — the attestation data carries only facts, not policy.
 
 ### Behaviour: `post_approval_merge_commits`
 
@@ -177,7 +177,7 @@ kosli evaluate trail release-v1.2.3 \
   --output json
 ```
 
-Custom attestation payload is available at `input.trail.compliance_status.attestations_statuses["scr-data"].attestation_data`. Use `--show-input` to verify the exact structure in your environment.
+Custom attestation payload is available at `input.trails[i].compliance_status.attestations_statuses["scr-data"].attestation_data`. Use `--show-input` to verify the exact structure in your environment.
 
 ## Documentation
 
@@ -205,6 +205,6 @@ npm test
 - `src/git.ts` — git command wrappers
 - `src/github.ts` — GitHub API client
 - `src/reporter.ts` — writes the attestation JSON file
-- `src/config.ts` — loads configuration from env vars and `scr.config.json`
+- `src/config.ts` — loads configuration from environment variables
 - `four-eyes.rego` — Rego policy for evaluating four-eyes compliance
 - `tests/` — Jest unit tests

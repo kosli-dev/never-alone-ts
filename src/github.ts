@@ -1,6 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
-import { PRDetails, UserIdentity } from './types';
+import { PRSummary, RawPRData, UserIdentity } from './types';
 
 const ThrottledOctokit = Octokit.plugin(throttling as any);
 
@@ -43,16 +43,16 @@ export class GitHubClient {
     }
   }
 
-  private prCache = new Map<number, Promise<PRDetails | undefined>>();
+  private prSummaryCache = new Map<number, Promise<{ summary: PRSummary; raw: RawPRData } | undefined>>();
 
-  async getPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
-    if (!this.prCache.has(prNumber)) {
-      this.prCache.set(prNumber, this._fetchPRFullDetails(prNumber));
+  async getPRSummaryAndRaw(prNumber: number): Promise<{ summary: PRSummary; raw: RawPRData } | undefined> {
+    if (!this.prSummaryCache.has(prNumber)) {
+      this.prSummaryCache.set(prNumber, this._fetchPRSummaryAndRaw(prNumber));
     }
-    return this.prCache.get(prNumber)!;
+    return this.prSummaryCache.get(prNumber)!;
   }
 
-  private async _fetchPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
+  private async _fetchPRSummaryAndRaw(prNumber: number): Promise<{ summary: PRSummary; raw: RawPRData } | undefined> {
     try {
       const [pr, reviews, commits] = await Promise.all([
         this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
@@ -60,17 +60,17 @@ export class GitHubClient {
         this.octokit.paginate(this.octokit.pulls.listCommits, { owner: this.owner, repo: this.repo, pull_number: prNumber, per_page: 100 }),
       ]);
 
-      return {
+      const summary: PRSummary = {
         number: prNumber,
         url: pr.data.html_url,
         title: pr.data.title,
+        state: pr.data.state,
+        merged_at: pr.data.merged_at || null,
         author: {
           login: pr.data.user?.login,
           user_id: pr.data.user?.id,
           web_url: pr.data.user?.html_url,
         },
-        state: pr.data.state,
-        merged_at: pr.data.merged_at || null,
         approvals: reviews.data
           .filter((r: any) => r.state === 'APPROVED')
           .map((r: any) => ({
@@ -81,7 +81,7 @@ export class GitHubClient {
             },
             approved_at: r.submitted_at,
           })),
-        commits: commits.map((c: any) => ({
+        pr_commits: commits.map((c: any) => ({
           sha: c.sha,
           parent_shas: c.parents.map((p: any) => p.sha),
           author: {
@@ -91,31 +91,38 @@ export class GitHubClient {
             user_id: c.author?.id,
             web_url: c.author?.html_url,
           },
-          date: new Date(c.commit.author?.date || 0),
+          date: c.commit.author?.date ?? new Date(0).toISOString(),
           message: c.commit.message,
         })),
       };
+
+      const raw: RawPRData = {
+        number: prNumber,
+        github_pr: pr.data,
+        github_reviews: reviews.data,
+        github_commits: commits,
+      };
+
+      return { summary, raw };
     } catch (error) {
-      console.error(`Error fetching full details for PR #${prNumber}: ${error}`);
+      console.error(`Error fetching PR summary and raw for PR #${prNumber}: ${error}`);
       return undefined;
     }
   }
 
-  async getCommitDetails(sha: string): Promise<UserIdentity | undefined> {
+  async getRawCommitData(sha: string): Promise<unknown> {
     try {
       const response = await this.octokit.repos.getCommit({
         owner: this.owner,
         repo: this.repo,
         ref: sha,
       });
-      return {
-        login: response.data.author?.login,
-        user_id: response.data.author?.id,
-        web_url: response.data.author?.html_url,
-      };
+      return response.data;
     } catch (error) {
-      console.error(`Error fetching commit details for ${sha}: ${error}`);
+      console.error(`Error fetching raw commit data for ${sha}: ${error}`);
       return undefined;
     }
   }
+
 }
+

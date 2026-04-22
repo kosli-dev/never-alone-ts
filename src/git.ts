@@ -28,16 +28,6 @@ export function getCommits(baseTag: string, currentTag: string, repoPath: string
   }
 }
 
-export function resolveSHA(ref: string, repoPath: string = process.cwd()): string | undefined {
-  if (!ref) return undefined;
-  try {
-    return execSync(`git rev-parse ${ref}`, { encoding: 'utf8', cwd: repoPath }).trim();
-  } catch (error) {
-    console.error(`Error resolving SHA for ${ref}: ${error}`);
-    return undefined;
-  }
-}
-
 
 export function getChangedFiles(sha: string, repoPath: string = process.cwd()): string[] {
   const command = `git show --name-only --pretty="format:" ${sha}`;
@@ -61,21 +51,30 @@ export function getCommitHistory(ref: string, repoPath: string = process.cwd()):
   }
 }
 
-export function getTagForCommit(sha: string, repoPath: string = process.cwd()): string | undefined {
-  try {
-    const output = execSync(`git tag --points-at ${sha}`, { encoding: 'utf8', cwd: repoPath }).trim();
-    if (!output) return undefined;
-    return output.split('\n')[0];
-  } catch {
-    return undefined;
-  }
-}
 
 export function getInitialCommit(repoPath: string = process.cwd()): string {
   try {
     return execSync('git rev-list --max-parents=0 HEAD', { encoding: 'utf8', cwd: repoPath }).trim();
   } catch (error) {
     console.error(`Error getting initial commit: ${error}`);
+    throw error;
+  }
+}
+
+export function getSingleCommit(sha: string, repoPath: string = process.cwd()): CommitInfo {
+  const command = `git show -s --pretty="format:%H||%P||%an||%ae||%aI||%s" ${sha}`;
+  try {
+    const output = execSync(command, { encoding: 'utf8', cwd: repoPath });
+    const [shaOut, parents, name, email, dateStr, message] = output.trim().split('||');
+    return {
+      sha: shaOut,
+      parent_shas: parents ? parents.trim().split(' ') : [],
+      author: { git_name: name, git_email: email },
+      date: new Date(dateStr),
+      message,
+    };
+  } catch (error) {
+    console.error(`Error getting single commit ${sha}: ${error}`);
     throw error;
   }
 }

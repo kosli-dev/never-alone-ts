@@ -1,14 +1,25 @@
 import * as dotenv from 'dotenv';
-import * as fs from 'fs';
-import * as path from 'path';
 import { Config } from './types';
 
-export function loadConfig(options: { configPath?: string; envFile?: string } = {}): Config {
-  const {
-    configPath = path.resolve(process.cwd(), 'scr.config.json'),
-    envFile,
-  } = options;
+export function loadGranularConfig(options: { envFile?: string } = {}): {
+  githubRepository: string;
+  githubToken: string;
+} {
+  const { envFile } = options;
+  dotenv.config(envFile ? { path: envFile } : {});
 
+  const githubRepository = process.env.GITHUB_REPOSITORY || '';
+  const githubToken = process.env.GITHUB_TOKEN || '';
+
+  if (!githubRepository || !githubToken) {
+    throw new Error('Missing required environment variables (GITHUB_REPOSITORY, GITHUB_TOKEN).');
+  }
+
+  return { githubRepository, githubToken };
+}
+
+export function loadConfig(options: { envFile?: string } = {}): Config {
+  const { envFile } = options;
   dotenv.config(envFile ? { path: envFile } : {});
 
   const baseTag = process.env.BASE_TAG || '';
@@ -22,12 +33,6 @@ export function loadConfig(options: { configPath?: string; envFile?: string } = 
     throw new Error('Missing required environment variables (CURRENT_TAG, GITHUB_REPOSITORY, GITHUB_TOKEN). Please check your .env file or environment.');
   }
 
-  if (!fs.existsSync(configPath)) {
-    throw new Error(`scr.config.json file not found at: ${configPath}`);
-  }
-
-  const configFile = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-
   return {
     baseTag,
     currentTag,
@@ -35,8 +40,5 @@ export function loadConfig(options: { configPath?: string; envFile?: string } = 
     githubToken,
     kosliFlow,
     kosliAttestationName,
-    exemptions: {
-      serviceAccounts: configFile.exemptions?.serviceAccounts || [],
-    },
   };
 }

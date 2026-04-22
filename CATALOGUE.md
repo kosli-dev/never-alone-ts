@@ -62,42 +62,37 @@ git log --first-parent BASE_TAG..CURRENT_TAG
          (GitHub Pull Requests API)
          │
          ▼
-  Write att_data_<CURRENT_TAG>.json
-  (commits[] + pull_requests{} + config + metadata)
+  Write att_data_<sha>.json + raw_<sha>.json  (one pair per commit)
 ```
 
-**Output shape (abbreviated):**
+**Output shape (`att_data_<sha>.json`, abbreviated):**
 
 ```json
 {
+  "commit_sha": "<40-char>",
   "repository": "owner/repo",
-  "range": { "base": "v1.0.0", "current": "v1.1.0", "base_sha": "...", "current_sha": "..." },
   "generated_at": "<ISO-8601>",
-  "config": { "exemptions": { "serviceAccounts": [] } },
-  "commits": [
+  "commit": {
+    "sha": "<40-char>",
+    "parent_shas": ["<sha>"],
+    "author": { "git_name": "...", "login": "...", "user_id": 0 },
+    "date": "<ISO-8601>",
+    "message": "...",
+    "changed_files": ["src/foo.ts"]
+  },
+  "pull_requests": [
     {
-      "sha": "<40-char>",
-      "parent_shas": ["<sha>"],
-      "author": { "git_name": "...", "login": "...", "user_id": 0 },
-      "date": "<ISO-8601>",
-      "message": "...",
-      "changed_files": ["src/foo.ts"],
-      "pr_number": 42
-    }
-  ],
-  "pull_requests": {
-    "42": {
       "number": 42,
-      "commits": [{ "sha": "...", "author": { "login": "..." }, "date": "..." }],
+      "pr_commits": [{ "sha": "...", "author": { "login": "..." }, "date": "..." }],
       "approvals": [{ "user": { "login": "..." }, "approved_at": "<ISO-8601>" }]
     }
-  }
+  ]
 }
 ```
 
-The attestation file is uploaded to Kosli via `kosli attest generic`, which makes it available to the policy engine as `input.trail.compliance_status.attestations_statuses["scr-data"].user_data`.
+Each attestation file is uploaded to Kosli via `kosli attest custom --type scr-data --attestation-data att_data_<sha>.json`, making it available to the policy engine at `input.trails[i].compliance_status.attestations_statuses["scr-data"].attestation_data`. The full raw GitHub API responses are attached separately as `raw_<sha>.json` via `--attachments`.
 
-**BASE_TAG auto-resolution:** If `BASE_TAG` is not supplied, the collector walks git history backward and queries Kosli for the most recent trail that already has an `scr-data` attestation, using that commit's tag as the base. This ensures consecutive releases are always evaluated contiguously.
+**BASE_TAG auto-resolution:** If `BASE_TAG` is not supplied, the collector walks git history backward and queries Kosli for the most recent trail that already has an `scr-data` attestation, using that SHA as the base. This ensures consecutive releases are always evaluated contiguously without gaps or overlaps.
 
 ---
 
@@ -126,134 +121,35 @@ Step 3 detail — "independent approval after latest code commit":
 
 ## Policy
 
+The policy evaluates a release range by receiving all commit trails together via `kosli evaluate trails SHA1 SHA2 ...`. Each trail in `input.trails` represents one commit. `allow` is `true` only if every trail is compliant.
+
+Service account patterns are defined as a constant in `four-eyes.rego` — not in the attestation data. To add an exemption, edit `service_account_patterns` in the policy file.
+
+See `four-eyes.rego` for the full current policy. Key constants:
+
 ```rego
-package policy
-
-import rego.v1
-
-default allow = false
-
-allow if count(violations) == 0
-
-attestation := input.trail.compliance_status.attestations_statuses["scr-data"].attestation_data
+# Service accounts exempt from the four-eyes check.
+# Add organisation-specific bot accounts alongside the defaults.
+service_account_patterns := {
+    "svc_.*",
+    "dependabot\\[bot\\]",
+    "github-actions\\[bot\\]",
+}
 
 # "ignore" — exclude merge-from-base commits from the approval timing check
 # "strict" — any commit after the last approval causes a failure
 post_approval_merge_commits := "strict"
-
-# Helpers
-pr_commit_shas(pr) := {c.sha | some c in pr.commits}
-
-pr_commit_authors(pr) := {login |
-    some c in pr.commits
-    login := c.author.login
-    login != null
-}
-
-is_merge_commit(commit) if { count(commit.parent_shas) > 1 }
-
-is_merge_from_base(commit, pr) if {
-    count(commit.parent_shas) > 1
-    some parent in commit.parent_shas
-    not pr_commit_shas(pr)[parent]
-}
-
-relevant_pr_commits(pr) := filtered if {
-    post_approval_merge_commits == "ignore"
-    filtered := [c | some c in pr.commits; not is_merge_from_base(c, pr)]
-    count(filtered) > 0
-}
-
-relevant_pr_commits(pr) := pr.commits if {
-    post_approval_merge_commits == "strict"
-}
-
-# Fallback: if every commit is a merge-from-base, use all
-relevant_pr_commits(pr) := pr.commits if {
-    post_approval_merge_commits == "ignore"
-    filtered := [c | some c in pr.commits; not is_merge_from_base(c, pr)]
-    count(filtered) == 0
-}
-
-latest_relevant_commit_ns(pr) := max(
-    {time.parse_rfc3339_ns(c.date) | some c in relevant_pr_commits(pr)},
-)
-
-# Regular commits: PR branch authors + this commit's own author must all have approval.
-has_independent_approval(commit, pr) if {
-    not is_merge_commit(commit)
-    cutoff := latest_relevant_commit_ns(pr)
-    all_authors := (pr_commit_authors(pr) | {commit.author.login}) - {null}
-    count(all_authors) > 0
-    every author_login in all_authors {
-        some approval in pr.approvals
-        approval.user.login != author_login
-        time.parse_rfc3339_ns(approval.approved_at) > cutoff
-    }
-}
-
-# Merge commits: only PR branch authors matter — the merger clicked a button, not code.
-has_independent_approval(commit, pr) if {
-    is_merge_commit(commit)
-    cutoff := latest_relevant_commit_ns(pr)
-    all_authors := pr_commit_authors(pr) - {null}
-    count(all_authors) > 0
-    every author_login in all_authors {
-        some approval in pr.approvals
-        approval.user.login != author_login
-        time.parse_rfc3339_ns(approval.approved_at) > cutoff
-    }
-}
-
-# Service account exemption
-is_service_account(commit) if {
-    some pattern in attestation.config.exemptions.serviceAccounts
-    regex.match(pattern, commit.author.git_name)
-}
-
-is_service_account(commit) if {
-    some pattern in attestation.config.exemptions.serviceAccounts
-    regex.match(pattern, commit.author.login)
-}
-
-has_any_pr_approval(commit) if {
-    some pr_num in commit.pr_numbers
-    pr := attestation.pull_requests[sprintf("%d", [pr_num])]
-    has_independent_approval(commit, pr)
-}
-
-# Violations
-violations contains msg if {
-    some commit in attestation.commits
-    not is_service_account(commit)
-    count(commit.pr_numbers) == 0
-    msg := sprintf(
-        "Commit %v (%v): no associated PR found",
-        [substring(commit.sha, 0, 7), commit.message],
-    )
-}
-
-violations contains msg if {
-    some commit in attestation.commits
-    not is_service_account(commit)
-    count(commit.pr_numbers) > 0
-    not has_any_pr_approval(commit)
-    msg := sprintf(
-        "Commit %v (%v): none of PRs %v have an independent approval after latest code commit",
-        [substring(commit.sha, 0, 7), commit.message, commit.pr_numbers],
-    )
-}
 ```
 
 ---
 
 ## Configuration
 
-All configuration lives in `scr.config.json` at the repository root and is embedded into the attestation at collection time. The policy reads it back from the attestation — there is no runtime config injection.
+Policy constants are set directly in `four-eyes.rego`. The collector has no config file — all inputs come from environment variables.
 
-| Key | Type | Default | Description |
+| Policy constant | Type | Default | Description |
 | --- | --- | --- | --- |
-| `exemptions.serviceAccounts` | `string[]` | `[]` | Regex patterns matched against `git_name` and `login`. Commits by matching authors are fully exempt. |
+| `service_account_patterns` | `set[string]` | `{"svc_.*", "dependabot\\[bot\\]", "github-actions\\[bot\\]"}` | Regex patterns matched against `git_name` and `login`. Commits by matching authors are fully exempt. Edit in `four-eyes.rego`. |
 | `post_approval_merge_commits` | `"ignore"` \| `"strict"` | `"strict"` | Controls whether merge-from-base commits count against the approval timestamp. Set in `four-eyes.rego` directly. |
 
 **Environment variables (collector):**
@@ -273,7 +169,7 @@ All configuration lives in `scr.config.json` at the repository root and is embed
 
 | Exemption type | Condition | Rationale |
 | --- | --- | --- |
-| Service account | Author name or login matches a regex in `serviceAccounts` | Automated commits (dependency updates, release scripts, CI bots) are not human-authored and cannot have a human reviewer. The service account identity itself is the control — access to that credential is the review gate. |
+| Service account | Author name or login matches a regex in `service_account_patterns` (defined in `four-eyes.rego`) | Automated commits (dependency updates, release scripts, CI bots) are not human-authored and cannot have a human reviewer. The service account identity itself is the control — access to that credential is the review gate. |
 
 ---
 
@@ -337,7 +233,7 @@ When the control fails, the violation message identifies the commit SHA and the 
 | Pattern | Why it triggers | Resolution |
 | --- | --- | --- |
 | Developer syncs feature branch with `main` after approval (`Merge branch 'main' into feature-x`) | In `strict` mode this merge-from-base commit post-dates the approval | Switch `post_approval_merge_commits` to `"ignore"` in `four-eyes.rego` |
-| Bot commits not matching any `serviceAccounts` pattern | The author name is not in the exemption list | Add the bot's `git_name` or `login` pattern to `serviceAccounts` in `scr.config.json` |
+| Bot commits not matching any `service_account_patterns` entry | The author name is not in the exemption set | Add the bot's `git_name` or `login` regex pattern to `service_account_patterns` in `four-eyes.rego` |
 
 ---
 
@@ -355,26 +251,16 @@ When the control fails, the violation message identifies the commit SHA and the 
 
 ## Attestation schema
 
-The produced attestation (`att_data_<tag>.json`) is consumed by the Rego policy and may also be consumed by downstream controls or audit tooling.
-
-Full TypeScript types are defined in `src/types.ts`. The top-level shape is:
+One `att_data_<sha>.json` file is produced per commit. Full TypeScript types are defined in `src/types.ts` (`CommitAttestation`). The top-level shape is:
 
 ```typescript
 {
+  commit_sha: string;           // full 40-char SHA (mirrors the trail name)
   repository: string;           // "owner/repo"
-  range: {
-    base: string;               // base tag or SHA
-    current: string;            // current tag or SHA
-    base_sha: string;
-    current_sha: string;
-  };
   generated_at: string;         // ISO-8601
-  config: {
-    exemptions: {
-      serviceAccounts: string[];
-    };
-  };
-  commits: CommitData[];
-  pull_requests: Record<string, PRDetails>;
+  commit: CommitSummary;        // single commit object with changed_files
+  pull_requests: PRSummary[];   // array of associated PRs with pr_commits + approvals
 }
 ```
+
+The schema is enforced server-side by Kosli via `jsonschema.json` and the `scr-data` custom attestation type. A separate `raw_<sha>.json` attachment carries the unprocessed GitHub API responses for audit purposes but is not validated by the schema.

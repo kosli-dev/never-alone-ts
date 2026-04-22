@@ -5,9 +5,6 @@ export interface Config {
   githubToken: string;
   kosliFlow: string;
   kosliAttestationName: string;
-  exemptions: {
-    serviceAccounts: string[];
-  };
 }
 
 export interface KosliTrail {
@@ -38,44 +35,58 @@ export interface CommitInfo {
   message: string;
 }
 
-export interface CommitData {
+// ─── Granular (per-commit) attestation types ─────────────────────────────────
+
+export interface CommitSummary {
   sha: string;
   parent_shas: string[];
   author: UserIdentity;
   date: string;
   message: string;
   changed_files: string[];
-  pr_numbers: number[];
 }
 
-export interface PRDetails {
+export interface PRCommitSummary {
+  sha: string;
+  parent_shas: string[];
+  author: UserIdentity;
+  date: string;
+  message: string;
+}
+
+export interface PRSummary {
   number: number;
   url: string;
   title: string;
-  author: UserIdentity;
   state: string;
   merged_at: string | null;
+  author: UserIdentity;
   approvals: {
     user: UserIdentity;
     approved_at: string;
   }[];
-  commits: CommitInfo[];
+  pr_commits: PRCommitSummary[];
 }
 
-export interface AttestationData {
+export interface CommitAttestation {
+  commit_sha: string;
   repository: string;
-  range: {
-    base: string;
-    base_sha?: string;
-    current: string;
-    current_sha?: string;
-  };
   generated_at: string;
-  config: {
-    exemptions: {
-      serviceAccounts: string[];
-    };
-  };
-  commits: CommitData[];
-  pull_requests: Record<string, PRDetails>;
+  commit: CommitSummary;
+  pull_requests: PRSummary[];
+}
+
+export interface RawPRData {
+  number: number;
+  github_pr: unknown;
+  github_reviews: unknown[];
+  github_commits: unknown[];
+}
+
+export interface RawAttachment {
+  commit_sha: string;
+  provider: string;
+  generated_at: string;
+  github_commit: unknown;
+  pull_requests: RawPRData[];
 }

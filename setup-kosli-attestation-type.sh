@@ -1,10 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-time setup: create the custom attestation type for scr-data.
-# Run this once per Kosli org before using simulate.sh.
+# One-time setup: create custom attestation types for never-alone.
+# Run this after any schema change. Types cannot be updated in place;
+# delete via the Kosli UI/API first if re-creating an existing type.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -z "${KOSLI_API_TOKEN:-}" ]]; then
+  echo "ERROR: KOSLI_API_TOKEN is not set" >&2
+  exit 1
+fi
+
+echo "Creating scr-data attestation type (per-commit source code review data)..."
 kosli create attestation-type scr-data \
-  --description "Source code review data for never-alone four-eyes verification" \
-  --schema jsonschema.json \
+  --description "Source code review data for never-alone four-eyes verification (per-commit)" \
+  --schema "${SCRIPT_DIR}/jsonschema.json" \
   --org sofus-test
+
+echo "Creating four-eyes-result attestation type (release-level policy evaluation result)..."
+kosli create attestation-type four-eyes-result \
+  --description "Four-eyes policy evaluation result for a release commit range (never-alone)" \
+  --schema "${SCRIPT_DIR}/four-eyes-result-schema.json" \
+  --jq ".allow == true" \
+  --org sofus-test
+
+echo "Done — scr-data and four-eyes-result attestation types ready."
