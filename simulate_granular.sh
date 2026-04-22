@@ -71,16 +71,14 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     KOSLI_ATTESTATION_NAME="${KOSLI_ATTESTATION_NAME}" \
     node "${SCRIPT_DIR}/dist/index.js" \
-      --repo "${REPO}" \
-      --config "${SCRIPT_DIR}/scr.config.json"
+      --repo "${REPO}"
   else
     CURRENT_TAG="${CURRENT_TAG}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
     KOSLI_FLOW="${KOSLI_FLOW}" \
     KOSLI_ATTESTATION_NAME="${KOSLI_ATTESTATION_NAME}" \
     node "${SCRIPT_DIR}/dist/index.js" \
-      --repo "${REPO}" \
-      --config "${SCRIPT_DIR}/scr.config.json"
+      --repo "${REPO}"
   fi
 
   # Determine commits in range for Kosli trail operations.

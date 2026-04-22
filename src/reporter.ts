@@ -5,7 +5,7 @@ export function generateGranularAttestation(
   commitSummary: CommitSummary,
   pullRequests: PRSummary[],
   rawData: { githubCommit: unknown; prRaws: RawPRData[] },
-  config: { githubRepository: string; exemptions: { serviceAccounts: string[] } },
+  config: { githubRepository: string },
 ): void {
   const sha = commitSummary.sha;
   const generatedAt = new Date().toISOString();
@@ -14,7 +14,6 @@ export function generateGranularAttestation(
     commit_sha: sha,
     repository: config.githubRepository,
     generated_at: generatedAt,
-    config: { exemptions: config.exemptions },
     commit: commitSummary,
     pull_requests: pullRequests,
   };

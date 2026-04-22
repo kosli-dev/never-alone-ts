@@ -21,13 +21,12 @@ async function main() {
   try {
     const args = process.argv.slice(2);
     const repoPath = parsePathArg(args, '--repo') ?? process.cwd();
-    const configPath = parsePathArg(args, '--config');
     const envFile = parsePathArg(args, '--env-file');
     const commitSha = parseStringArg(args, '--commit');
 
     // ─── Per-commit (granular) mode ───────────────────────────────────────────
     if (commitSha) {
-      const config = loadGranularConfig({ configPath, envFile });
+      const config = loadGranularConfig({ envFile });
       const github = new GitHubClient(config.githubRepository, config.githubToken);
       const collector = new Collector(github, repoPath);
 
@@ -44,7 +43,7 @@ async function main() {
     // Writes one att_data_<sha>.json + raw_<sha>.json per commit in range.
     // If BASE_TAG is not set but KOSLI_FLOW is, the base is auto-resolved from
     // the most recent attested commit in that flow.
-    const config = loadConfig({ configPath, envFile });
+    const config = loadConfig({ envFile });
 
     const flow = parseStringArg(args, '--flow') || config.kosliFlow;
     if (flow && !config.baseTag) {

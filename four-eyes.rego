@@ -103,15 +103,24 @@ has_independent_approval(commit, pr) if {
 
 # ---------------------------------------------------------------------------
 # Service account exemption
+#
+# Patterns are matched against both git_name and login. Add organisation-
+# specific bot accounts alongside the defaults below.
 # ---------------------------------------------------------------------------
 
-is_service_account(commit, attestation) if {
-	some pattern in attestation.config.exemptions.serviceAccounts
+service_account_patterns := {
+	"svc_.*",
+	"dependabot\\[bot\\]",
+	"github-actions\\[bot\\]",
+}
+
+is_service_account(commit) if {
+	some pattern in service_account_patterns
 	regex.match(pattern, commit.author.git_name)
 }
 
-is_service_account(commit, attestation) if {
-	some pattern in attestation.config.exemptions.serviceAccounts
+is_service_account(commit) if {
+	some pattern in service_account_patterns
 	regex.match(pattern, commit.author.login)
 }
 
@@ -127,6 +136,7 @@ has_any_pr_approval(commit, attestation) if {
 	some pr in attestation.pull_requests
 	has_independent_approval(commit, pr)
 }
+
 
 # ---------------------------------------------------------------------------
 # Violations — iterate over all trails
@@ -144,7 +154,7 @@ violations contains msg if {
 	some pr in attestation.pull_requests
 	some c in pr.pr_commits
 	c.author.login == null
-	not is_service_account(c, attestation)
+	not is_service_account(c)
 	msg := sprintf(
 		"PR #%v: commit %v author '%v <%v>' has no linked GitHub account — identity unverifiable",
 		[pr.number, substring(c.sha, 0, 7), c.author.git_name, c.author.git_email],
@@ -155,7 +165,7 @@ violations contains msg if {
 	some trail in input.trails
 	attestation := trail_data(trail)
 	commit := attestation.commit
-	not is_service_account(commit, attestation)
+	not is_service_account(commit)
 	count(attestation.pull_requests) == 0
 	msg := sprintf(
 		"Commit %v (%v): no associated PR found",
@@ -167,7 +177,7 @@ violations contains msg if {
 	some trail in input.trails
 	attestation := trail_data(trail)
 	commit := attestation.commit
-	not is_service_account(commit, attestation)
+	not is_service_account(commit)
 	count(attestation.pull_requests) > 0
 	not has_any_pr_approval(commit, attestation)
 	msg := sprintf(

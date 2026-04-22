@@ -492,5 +492,11 @@ Try to make a seperate plan over how you would make a cache for simultainious ru
 **`scr.config.json` is embedded in every attestation.**
 The `config.exemptions.serviceAccounts` patterns are baked into each `att_data_<sha>.json` at generation time. Adding a new service account pattern only covers future attestations — past ones keep the old config. This is correct for audit immutability, but operators may not expect it. _Should be documented explicitly in the README._
 
+Please remove the scr.config.json from the code.
+Move the service account part to the rego rule instead.
+Run build, test and simultation to make sure it works.
+
 **Concurrent runs for the same flow.**
 If two CI jobs run `simulate_granular.sh` against the same flow simultaneously (e.g. two PRs merged in quick succession), they may both auto-resolve to the same base SHA, produce overlapping `git log` ranges, and create duplicate or conflicting trails. The Kosli API may reject duplicate trail names, causing one job to fail. _Mitigation: serialise runs using a lock (e.g. Kosli itself as the lock via `begin trail` atomicity), or run granular attestation as a queued job rather than a parallel one._
+
+This will be solved in a different manner

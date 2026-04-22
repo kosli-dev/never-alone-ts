@@ -5,9 +5,6 @@ export interface Config {
   githubToken: string;
   kosliFlow: string;
   kosliAttestationName: string;
-  exemptions: {
-    serviceAccounts: string[];
-  };
 }
 
 export interface KosliTrail {
@@ -75,11 +72,6 @@ export interface CommitAttestation {
   commit_sha: string;
   repository: string;
   generated_at: string;
-  config: {
-    exemptions: {
-      serviceAccounts: string[];
-    };
-  };
   commit: CommitSummary;
   pull_requests: PRSummary[];
 }

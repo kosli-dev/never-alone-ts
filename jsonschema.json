@@ -3,7 +3,7 @@
   "$id": "att_data",
   "title": "CommitAttestation",
   "type": "object",
-  "required": ["commit_sha", "repository", "generated_at", "config", "commit", "pull_requests"],
+  "required": ["commit_sha", "repository", "generated_at", "commit", "pull_requests"],
   "additionalProperties": false,
   "properties": {
     "commit_sha": {
@@ -18,25 +18,6 @@
       "type": "string",
       "format": "date-time",
       "description": "ISO 8601 timestamp of when this data was generated"
-    },
-    "config": {
-      "type": "object",
-      "required": ["exemptions"],
-      "additionalProperties": false,
-      "properties": {
-        "exemptions": {
-          "type": "object",
-          "required": ["serviceAccounts"],
-          "additionalProperties": false,
-          "properties": {
-            "serviceAccounts": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Regex patterns matching service account logins to exempt"
-            }
-          }
-        }
-      }
     },
     "commit": { "$ref": "#/$defs/CommitSummary" },
     "pull_requests": {

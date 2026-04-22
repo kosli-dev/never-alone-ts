@@ -1,6 +1,6 @@
 import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
-import { PRDetails, PRSummary, RawPRData, UserIdentity } from './types';
+import { PRSummary, RawPRData, UserIdentity } from './types';
 
 const ThrottledOctokit = Octokit.plugin(throttling as any);
 
@@ -40,64 +40,6 @@ export class GitHubClient {
     } catch (error) {
       console.error(`Error searching PR for commit ${sha}: ${error}`);
       return [];
-    }
-  }
-
-  private prCache = new Map<number, Promise<PRDetails | undefined>>();
-
-  async getPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
-    if (!this.prCache.has(prNumber)) {
-      this.prCache.set(prNumber, this._fetchPRFullDetails(prNumber));
-    }
-    return this.prCache.get(prNumber)!;
-  }
-
-  private async _fetchPRFullDetails(prNumber: number): Promise<PRDetails | undefined> {
-    try {
-      const [pr, reviews, commits] = await Promise.all([
-        this.octokit.pulls.get({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
-        this.octokit.pulls.listReviews({ owner: this.owner, repo: this.repo, pull_number: prNumber }),
-        this.octokit.paginate(this.octokit.pulls.listCommits, { owner: this.owner, repo: this.repo, pull_number: prNumber, per_page: 100 }),
-      ]);
-
-      return {
-        number: prNumber,
-        url: pr.data.html_url,
-        title: pr.data.title,
-        author: {
-          login: pr.data.user?.login,
-          user_id: pr.data.user?.id,
-          web_url: pr.data.user?.html_url,
-        },
-        state: pr.data.state,
-        merged_at: pr.data.merged_at || null,
-        approvals: reviews.data
-          .filter((r: any) => r.state === 'APPROVED')
-          .map((r: any) => ({
-            user: {
-              login: r.user?.login,
-              user_id: r.user?.id,
-              web_url: r.user?.html_url,
-            },
-            approved_at: r.submitted_at,
-          })),
-        commits: commits.map((c: any) => ({
-          sha: c.sha,
-          parent_shas: c.parents.map((p: any) => p.sha),
-          author: {
-            git_name: c.commit.author?.name,
-            git_email: c.commit.author?.email,
-            login: c.author?.login,
-            user_id: c.author?.id,
-            web_url: c.author?.html_url,
-          },
-          date: new Date(c.commit.author?.date || 0),
-          message: c.commit.message,
-        })),
-      };
-    } catch (error) {
-      console.error(`Error fetching full details for PR #${prNumber}: ${error}`);
-      return undefined;
     }
   }
 
@@ -182,21 +124,5 @@ export class GitHubClient {
     }
   }
 
-  async getCommitDetails(sha: string): Promise<UserIdentity | undefined> {
-    try {
-      const response = await this.octokit.repos.getCommit({
-        owner: this.owner,
-        repo: this.repo,
-        ref: sha,
-      });
-      return {
-        login: response.data.author?.login,
-        user_id: response.data.author?.id,
-        web_url: response.data.author?.html_url,
-      };
-    } catch (error) {
-      console.error(`Error fetching commit details for ${sha}: ${error}`);
-      return undefined;
-    }
-  }
 }
+

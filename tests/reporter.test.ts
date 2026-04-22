@@ -6,7 +6,6 @@ jest.mock('fs');
 
 const mockConfig = {
   githubRepository: 'owner/repo',
-  exemptions: { serviceAccounts: ['svc_.*'] },
 };
 
 const mockCommitSummary: CommitSummary = {
@@ -39,11 +38,11 @@ describe('Reporter', () => {
     expect(calls).toContain(`raw_${mockCommitSummary.sha}.json`);
   });
 
-  it('should embed config exemptions in the attestation output', () => {
+  it('should not include a config block in the attestation output', () => {
     generateGranularAttestation(mockCommitSummary, [], { githubCommit: {}, prRaws: [] }, mockConfig);
     const attCall = (fs.writeFileSync as jest.Mock).mock.calls.find((c: any[]) => c[0].startsWith('att_data_'));
     const written = JSON.parse(attCall[1]);
-    expect(written.config.exemptions).toEqual(mockConfig.exemptions);
+    expect(written.config).toBeUndefined();
   });
 
   it('should include commit and pull_requests in the attestation output', () => {
