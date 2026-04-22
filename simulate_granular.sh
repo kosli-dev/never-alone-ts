@@ -119,26 +119,61 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
       rm -f "${ATT_FILE}" "${RAW_FILE}"
       echo "  Cleaned up ${ATT_FILE} and ${RAW_FILE}"
     fi
+
+    # 3. Evaluate this single commit trail and attest the per-commit four-eyes result.
+    #    base_commit is the parent SHA; current_commit is this SHA.
+    #    Compliance is driven by the --jq ".allow == true" rule on the type.
+    COMMIT_EVAL_FILE="${SCRIPT_DIR}/commit_eval_${SHA}.json"
+    kosli evaluate trails "${SHA}" \
+      --policy "${SCRIPT_DIR}/four-eyes.rego" \
+      --flow "${KOSLI_FLOW}" \
+      --output json > "${COMMIT_EVAL_FILE}" 2>/dev/null || true
+
+    PARENT_SHA=$(git -C "${REPO}" rev-parse "${SHA}^")
+    COMMIT_EVALUATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    COMMIT_SUMMARY_FILE="${SCRIPT_DIR}/commit_summary_${SHA}.json"
+    jq -n \
+      --argjson allow "$(jq '.allow' "${COMMIT_EVAL_FILE}")" \
+      --argjson violations "$(jq '.violations' "${COMMIT_EVAL_FILE}")" \
+      --arg evaluated_at "${COMMIT_EVALUATED_AT}" \
+      --arg repository "${GITHUB_REPOSITORY}" \
+      --arg base_commit "${PARENT_SHA}" \
+      --arg current_commit "${SHA}" \
+      '{allow: $allow, violations: $violations, evaluated_at: $evaluated_at, repository: $repository, base_commit: $base_commit, current_commit: $current_commit}' \
+      > "${COMMIT_SUMMARY_FILE}"
+
+    echo "  Attesting per-commit four-eyes result..."
+    kosli attest custom \
+      --type "four-eyes-result" \
+      --name "four-eyes-result" \
+      --attestation-data "${COMMIT_SUMMARY_FILE}" \
+      --attachments "${SCRIPT_DIR}/four-eyes.rego,${COMMIT_EVAL_FILE}" \
+      --trail "${SHA}" \
+      --flow "${KOSLI_FLOW}"
+
+    if [[ "${CLEANUP}" == "true" ]]; then
+      rm -f "${COMMIT_EVAL_FILE}" "${COMMIT_SUMMARY_FILE}"
+    fi
   done <<< "${COMMITS}"
 
-  # 3. Evaluate all commit trails in this release range together.
-  #    One call covers the entire release — Rego sees input.trails (array).
+  # 4. Begin a tag-level trail for the release-range four-eyes evaluation.
   echo ""
+  echo "  Beginning tag trail ${CURRENT_TAG}..."
+  kosli begin trail "${CURRENT_TAG}" \
+    --flow "${KOSLI_FLOW}" \
+    --commit "${CURRENT_SHA}" \
+    --repo-root "${REPO}"
+
+  # 5. Evaluate all commit trails in this release range together.
+  #    One call covers the entire release — Rego sees input.trails (array).
   echo "  Evaluating ${BASE_TAG} → ${CURRENT_TAG}..."
   TRAIL_LIST=$(echo "${COMMITS}" | tr '\n' ' ')
   EVAL_FILE="${SCRIPT_DIR}/eval_result_${CURRENT_TAG}.json"
-  EVAL_EXIT=0
   kosli evaluate trails ${TRAIL_LIST} \
     --policy "${SCRIPT_DIR}/four-eyes.rego" \
     --show-input \
     --flow "${KOSLI_FLOW}" \
-    --output json > "${EVAL_FILE}" 2>/dev/null || EVAL_EXIT=$?
-
-  COMPLIANT_FLAG="true"
-  if [[ "${EVAL_EXIT}" -ne 0 ]]; then
-    echo "  Policy violations found — attesting as non-compliant"
-    COMPLIANT_FLAG="false"
-  fi
+    --output json > "${EVAL_FILE}" 2>/dev/null || true
 
   # Build a lean summary from the full eval output.
   # The full eval_result file (including echoed input) is kept as an attachment.
@@ -155,19 +190,16 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
     '{allow: $allow, violations: $violations, evaluated_at: $evaluated_at, repository: $repository, base_commit: $base_commit, current_commit: $current_commit}' \
     > "${SUMMARY_FILE}"
 
-  echo "  Attesting evaluation result (allow=${COMPLIANT_FLAG})..."
-
-  # 4. Attest evaluation result to the trail for the current tag's commit SHA.
-  #    The current tag's commit is always the topmost commit in the range, so
-  #    its trail was already begun in the inner loop above.
+  # 6. Attest release evaluation result to the tag-named trail.
   #    Compliance is driven by the --jq ".allow == true" rule on the type:
   #    allow: false → is_compliant: false. four-eyes.rego is attached as evidence.
+  echo "  Attesting release evaluation result to trail ${CURRENT_TAG}..."
   kosli attest custom \
     --type "four-eyes-result" \
     --name "four-eyes-result" \
     --attestation-data "${SUMMARY_FILE}" \
     --attachments "${SCRIPT_DIR}/four-eyes.rego,${EVAL_FILE}" \
-    --trail "${CURRENT_SHA}" \
+    --trail "${CURRENT_TAG}" \
     --flow "${KOSLI_FLOW}"
 
   if [[ "${CLEANUP}" == "true" ]]; then

@@ -4,5 +4,7 @@ build
 .env
 att_data*.json
 eval_result*.json
+commit_eval*.json
 raw_*.json
 eval_summary*.json
+commit_summary*.json
