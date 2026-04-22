@@ -1,6 +1,7 @@
 # Plan: Granular Per-Commit Attestation Model
 
 **Date:** 2026-04-21  
+**Last updated:** 2026-04-22  
 **Status:** In Progress
 
 ---
@@ -39,11 +40,6 @@ Vendor-agnostic. Contains only what the Rego policy needs to evaluate this one c
   "commit_sha": "<full sha>",
   "repository": "owner/repo",
   "generated_at": "2026-04-21T10:00:00Z",
-  "config": {
-    "exemptions": {
-      "serviceAccounts": ["svc_.*", "dependabot.*"]
-    }
-  },
   "commit": {
     "sha": "abc1234...",
     "parent_shas": ["parent1"],
@@ -107,6 +103,7 @@ Vendor-agnostic. Contains only what the Rego policy needs to evaluate this one c
 - `pull_requests` becomes an array (was a map keyed by PR number string) — no need for keyed lookup when there is only one commit to match against
 - `range` block removed — the trail name is the commit SHA; range is a release-level concept, not a commit-level one
 - `commit_sha` added at top level as an explicit identifier (mirrors the trail name)
+- `config.exemptions` block removed — service account patterns moved to `four-eyes.rego` as a policy constant (see section 3)
 
 ### 2b. Attachment: raw provider data (`raw_<sha>.json`)
 
@@ -183,11 +180,12 @@ violations contains msg if {
 
 **Other changes:**
 
-- `is_service_account(commit)` → `is_service_account(commit, attestation)` — attestation threaded as parameter since there is no global
-- `has_any_pr_approval(commit)` → `has_any_pr_approval(commit, attestation)` — same reason
+- `is_service_account(commit, attestation)` → `is_service_account(commit)` — attestation no longer needed; patterns live in `service_account_patterns` constant in the policy
+- `has_any_pr_approval(commit, attestation)` — attestation still threaded as parameter (needed to access `attestation.pull_requests`)
 - `pr.commits` → `pr.pr_commits` everywhere — field renamed in new schema (confirmed from live input)
 - `commit.pr_numbers` check gone — replaced by `count(attestation.pull_requests) == 0`
 - Missing-attestation violation uses `trail.name` to identify which trail is missing it
+- `service_account_patterns` constant added — `svc_.*`, `dependabot\[bot\]`, `github-actions\[bot\]`; no longer read from attestation data
 
 ### Policy scope
 
@@ -225,14 +223,16 @@ With per-commit trails there will be many more trails per flow than before (one 
 
 > **IMPLEMENTED** — The following files were updated:
 >
-> - `src/types.ts` — `CommitSummary`, `PRSummary`, `PRCommitSummary`, `CommitAttestation`, `RawPRData`, `RawAttachment` added
-> - `src/git.ts` — `getSingleCommit(sha, repoPath)` added
-> - `src/github.ts` — `getPRSummaryAndRaw()` and `getRawCommitData()` added (each with their own cache)
-> - `src/evaluator.ts` — `collectCommitGranular()` added to `Collector` class
-> - `src/reporter.ts` — `generateGranularAttestation()` added (writes both `att_data_<sha>.json` and `raw_<sha>.json`)
-> - `src/config.ts` — `loadGranularConfig()` added (requires only `GITHUB_REPOSITORY` + `GITHUB_TOKEN`)
-> - `src/index.ts` — `--commit <sha>` flag activates single-commit granular path; range mode also replaced to write granular files per commit (parallelised with `pLimit(4)`). `--resolve-base` flag removed; `generateAttestationData` and old batch path removed.
-> - `tests/baseTagResolver.test.ts` — updated: removed tag-lookup expectations; `resolveBaseTag` now always returns SHA directly.
+> - `src/types.ts` — `CommitSummary`, `PRSummary`, `PRCommitSummary`, `CommitAttestation`, `RawPRData`, `RawAttachment` added; `CommitData`, `PRDetails`, `AttestationData` removed; `Config.exemptions` removed; `CommitAttestation.config` block removed
+> - `src/git.ts` — `getSingleCommit(sha, repoPath)` added; `getTagForCommit()` and `resolveSHA()` removed
+> - `src/github.ts` — `getPRSummaryAndRaw()` and `getRawCommitData()` added (each with their own cache); `getPRFullDetails()`, `_fetchPRFullDetails()`, `getCommitDetails()` removed
+> - `src/evaluator.ts` — `collectCommitGranular()` added; `collectCommit()` removed entirely
+> - `src/reporter.ts` — `generateGranularAttestation()` added (writes both `att_data_<sha>.json` and `raw_<sha>.json`); `generateAttestationData()` removed
+> - `src/config.ts` — complete rewrite: pure env-var loader, no file I/O; `loadGranularConfig()` (requires only `GITHUB_REPOSITORY` + `GITHUB_TOKEN`) and `loadConfig()` (adds `CURRENT_TAG`, optional `BASE_TAG`/`KOSLI_FLOW`); `scr.config.json` reading and `exemptions` removed entirely; `--config` flag removed from `src/index.ts`
+> - `src/index.ts` — `--commit <sha>` flag activates single-commit granular path; range mode rewired to produce granular files per commit (parallelised with `pLimit(4)`); `--max-commits` guard added (default 5000); `--resolve-base` and `--config` flags removed; old batch path removed
+> - `tests/baseTagResolver.test.ts` — updated: removed tag-lookup expectations; `resolveBaseTag` now always returns SHA directly
+> - `scr.config.json` — deleted; no longer referenced anywhere
+> - `simulate.sh` — deleted (old batch model)
 
 ### `src/reporter.ts`
 
@@ -301,7 +301,7 @@ Key changes from old schema:
 - `CommitData.pr_numbers` removed
 - `UserIdentity.login`, `user_id`, `web_url` declared as `oneOf [string/integer, null]` to allow null when GitHub identity can't be resolved
 
-`setup-kosli-attestation-type.sh` updated to delete (if exists) and re-create — so it can be re-run after any future schema change.
+`setup-kosli-attestation-type.sh` updated to only create (delete step removed — `kosli delete attestation-type` is not a valid command). Re-running the script on an existing type will fail; manually delete via the Kosli UI or API if a schema update is needed.
 
 **Kosli flag discovery:** `attest custom` requires `--attestation-data` (not `--user-data`). The data lands in `.attestation_data` in the Rego input, not `.user_data`.
 
@@ -445,36 +445,36 @@ Things the current implementation does not address, grouped by severity.
 ### Correctness / data integrity
 
 **First-ever run on a fresh flow — unbounded range.**
-When `KOSLI_FLOW` exists but has no trails yet, `resolveBaseTag` falls back to `getInitialCommit`, which returns the very first commit in the repo's history. For a repo with years of history that could mean attesting thousands of commits in a single run. There is no bootstrapping mechanism other than setting `BASE_TAG` explicitly. _Mitigation needed: document that the first invocation must pass an explicit `BASE_TAG`, or add a `--max-commits` guard._
+When `KOSLI_FLOW` exists but has no trails yet, `resolveBaseTag` falls back to `getInitialCommit`, which returns the very first commit in the repo's history. For a repo with years of history that could mean attesting thousands of commits in a single run. There is no bootstrapping mechanism other than setting `BASE_TAG` explicitly.
 
-Add a --max-commits guard, and set it default to 5000 commits.
+> **DONE** — `--max-commits` guard added to `src/index.ts` with default 5000. Throws a clear error message instructing the user to set `BASE_TAG` explicitly when the limit is exceeded.
 
 **Idempotency of re-runs.**
-If a CI job is retried after partial completion, the collector will re-write `att_data_<sha>.json` files (fine — deterministic) but `kosli begin trail` and `kosli attest custom` may fail or produce duplicate attestations if the trail already exists. The current script has no `--existing` or idempotency flag. _Unknown: does the Kosli CLI silently succeed or hard-fail on a duplicate `begin trail`? Needs testing._
+If a CI job is retried after partial completion, the collector will re-write `att_data_<sha>.json` files (fine — deterministic) but `kosli begin trail` and `kosli attest custom` may fail or produce duplicate attestations if the trail already exists.
 
-Kosli will append to the trail, so both operations are safe to do.
+> **RESOLVED** — Kosli appends to existing trails rather than failing. Both `begin trail` and `attest custom` are safe to re-run.
 
 **Output files written to CWD.**
 `generateGranularAttestation()` writes `att_data_<sha>.json` and `raw_<sha>.json` to `process.cwd()`. `simulate_granular.sh` assumes this equals `SCRIPT_DIR`. If the collector is invoked from a different working directory (e.g. a CI runner's workspace root), the shell script's `${SCRIPT_DIR}/att_data_${SHA}.json` path will not match where the files land. _Fix: add an `--output-dir` flag to `src/index.ts` and pass it explicitly from the shell script._
 
-Not applicable.
+> **NOT APPLICABLE** — confirmed by user.
 
 **`kosli delete attestation-type` may be an invalid command.**
-During `setup-kosli-attestation-type.sh` the delete step printed the help text rather than deleting, indicating the command may not exist. The `|| true` masked it and `create` succeeded (possibly because no type existed yet). On a re-run when the type already exists, `create` may fail. _Needs verification: check `kosli delete --help` to confirm whether `attestation-type` is a valid sub-target._
+During `setup-kosli-attestation-type.sh` the delete step printed the help text rather than deleting, indicating the command may not exist. The `|| true` masked it and `create` succeeded (possibly because no type existed yet). On a re-run when the type already exists, `create` may fail.
 
-Remove deletion.
+> **DONE** — Delete step removed from `setup-kosli-attestation-type.sh`. Script now only runs `kosli create attestation-type`.
 
 ### Dead code / cleanup
 
 **Old batch types and `collectCommit` still in the codebase.**
-`CommitData`, `PRDetails`, `AttestationData`, `collectCommit()` in `src/evaluator.ts`, `generateAttestationData()` stubs, and the old `simulate.sh` all remain. If the granular model is the only supported path going forward, these should be removed to prevent confusion. _Decision needed: deprecate-and-remove, or keep as a legacy batch mode for backward compatibility?_
+`CommitData`, `PRDetails`, `AttestationData`, `collectCommit()` in `src/evaluator.ts`, `generateAttestationData()` stubs, and the old `simulate.sh` all remain.
 
-deprecate-and-remove.
+> **DONE** — All removed: `CommitData`, `PRDetails`, `AttestationData` from `src/types.ts`; `collectCommit()` from `src/evaluator.ts`; `generateAttestationData()` from `src/reporter.ts`; `simulate.sh` deleted.
 
 **`getTagForCommit` still exported from `src/git.ts`.**
 `resolveBaseTag` no longer calls it, but it may still be exported. Dead code that creates a false impression the system still resolves tags from SHAs.
 
-remove export.
+> **DONE** — `getTagForCommit()` and `resolveSHA()` removed from `src/git.ts`.
 
 ### Operational / production readiness
 
@@ -484,19 +484,63 @@ The evaluation result is attested as `generic` (no type, no schema). The payload
 **GitHub API rate limiting across large ranges.**
 `pLimit(4)` limits concurrency to 4 GitHub API calls in parallel per run. For repositories with large releases (50+ commits, each with active PRs), this could still approach the 5 000 requests/hour limit. PR data is cached per-run only — a re-run refetches everything. _Options: persist the PR cache between runs, reduce concurrency, or add explicit rate-limit retry logic._
 
-Try to make a seperate plan over how you would make a cache for simultainious runs on github actions spanning over multiple workflows. persist this in a different markdown file.
+> **DONE** — Separate caching plan written to `agent-stuff/GITHUB_ACTIONS_CACHE_PLAN.md`. Covers per-PR cache key scheme using `@actions/cache`, `updated_at` invalidation, race condition analysis, and recommendation (Option A: SHA-keyed PR cache with `updated_at` busting).
 
 **No CI/CD integration template.**
 `simulate_granular.sh` is a local simulation script. It has hardcoded absolute paths (`/home/sofus/git/cli`), `CLEANUP=false`, and no error recovery. A production GitHub Actions workflow that runs never-alone on every merge to `main` does not exist yet. The step sequence (collector → begin trail → attest → evaluate → attest result) needs to be expressed as a reusable workflow or composite action. _This is the primary remaining work before production use._
 
 **`scr.config.json` is embedded in every attestation.**
-The `config.exemptions.serviceAccounts` patterns are baked into each `att_data_<sha>.json` at generation time. Adding a new service account pattern only covers future attestations — past ones keep the old config. This is correct for audit immutability, but operators may not expect it. _Should be documented explicitly in the README._
+The `config.exemptions.serviceAccounts` patterns are baked into each `att_data_<sha>.json` at generation time. Adding a new service account pattern only covers future attestations — past ones keep the old config.
 
-Please remove the scr.config.json from the code.
-Move the service account part to the rego rule instead.
-Run build, test and simultation to make sure it works.
+> **DONE** — `scr.config.json` deleted. `config.exemptions` removed from attestation schema and all code. Service account patterns (`svc_.*`, `dependabot\[bot\]`, `github-actions\[bot\]`) moved to `four-eyes.rego` as a `service_account_patterns` constant. `is_service_account(commit, attestation)` simplified to `is_service_account(commit)`. `jsonschema.json` updated, `scr-data` type re-created in Kosli, build + tests + simulation all confirmed passing.
 
 **Concurrent runs for the same flow.**
-If two CI jobs run `simulate_granular.sh` against the same flow simultaneously (e.g. two PRs merged in quick succession), they may both auto-resolve to the same base SHA, produce overlapping `git log` ranges, and create duplicate or conflicting trails. The Kosli API may reject duplicate trail names, causing one job to fail. _Mitigation: serialise runs using a lock (e.g. Kosli itself as the lock via `begin trail` atomicity), or run granular attestation as a queued job rather than a parallel one._
+If two CI jobs run `simulate_granular.sh` against the same flow simultaneously (e.g. two PRs merged in quick succession), they may both auto-resolve to the same base SHA, produce overlapping `git log` ranges, and create duplicate or conflicting trails. The Kosli API may reject duplicate trail names, causing one job to fail.
 
-This will be solved in a different manner
+> **DEFERRED** — Will be addressed separately (not in this plan).
+
+---
+
+## 14. `four-eyes_test.rego` rewrite (2026-04-22)
+
+> **DONE** — Complete rewrite. 26 tests, all passing (confirmed via `docker run --rm -v "$(pwd)":/work openpolicyagent/opa test /work/four-eyes.rego /work/four-eyes_test.rego -v`).
+
+The old test file tested a fundamentally different input shape (single trail, `commits[]` array, PR map keyed by number string). The rewrite introduces helpers that mirror the actual `att_data_<sha>.json` + Kosli trails structure:
+
+```rego
+make_trail(commit_obj, prs)   # one trail wrapping one commit + its PRs
+make_input(trails)            # wraps trail array in {"trails": [...]}
+make_pr(number, pr_commits, approvals)
+commit(sha, author_login, message, changed_files)
+pr_commit(sha) / pr_commit_by(sha, login) / pr_commit_no_github(sha, git_name, git_email)
+approval(login, approved_at)
+```
+
+New test coverage added (vs. old file):
+
+- Missing attestation (`scr-data` key absent from trail) → violation
+- All three `service_account_patterns` entries (`svc_.*`, `dependabot[bot]`, `github-actions[bot]`)
+- Service account matched via `login` field (not just `git_name`)
+- Null login on PR commit → "identity unverifiable" violation with email in message
+- All-null-login scenario does not vacuously pass
+- Null login on PR commit matching service account pattern → no identity violation
+
+---
+
+## 15. Simulation results (2026-04-22)
+
+Flow `cli-granular-demo-20260422080208` — re-run after `scr.config.json` removal and `service_account_patterns` added to Rego. Same 9 tag pairs against `kosli-dev/cli`:
+
+| Range | Result | Note |
+| --- | --- | --- |
+| v2.11.41 → v2.11.42 | PASS | |
+| v2.11.42 → v2.11.43 | PASS | base auto-resolved |
+| v2.11.43 → v2.11.44 | PASS | |
+| v2.11.44 → v2.11.45 | **FAIL** | PR #666 — same expected failure |
+| v2.11.45 → v2.11.46 | PASS | |
+| v2.11.46 → v2.12.0 | PASS | |
+| v2.12.0 → v2.12.1 | PASS | |
+| v2.12.1 → v2.13.0 | PASS | |
+| v2.13.0 → v2.13.1 | PASS | |
+
+8 PASS / 1 expected FAIL — identical outcome to 2026-04-21. Schema validation active (no `config` block in attestation). Kosli `scr-data` type updated via `setup-kosli-attestation-type.sh` before the run.
