@@ -139,22 +139,39 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
     echo "  Policy violations found — attesting as non-compliant"
     COMPLIANT_FLAG="false"
   fi
-  echo "  Attesting evaluation result (compliant=${COMPLIANT_FLAG})..."
- 
+
+  # Build a lean summary from the full eval output.
+  # The full eval_result file (including echoed input) is kept as an attachment.
+  BASE_SHA=$(git -C "${REPO}" rev-parse "${BASE_TAG}^{commit}")
+  EVALUATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  SUMMARY_FILE="${SCRIPT_DIR}/eval_summary_${CURRENT_TAG}.json"
+  jq -n \
+    --argjson allow "$(jq '.allow' "${EVAL_FILE}")" \
+    --argjson violations "$(jq '.violations' "${EVAL_FILE}")" \
+    --arg evaluated_at "${EVALUATED_AT}" \
+    --arg repository "${GITHUB_REPOSITORY}" \
+    --arg base_commit "${BASE_SHA}" \
+    --arg current_commit "${CURRENT_SHA}" \
+    '{allow: $allow, violations: $violations, evaluated_at: $evaluated_at, repository: $repository, base_commit: $base_commit, current_commit: $current_commit}' \
+    > "${SUMMARY_FILE}"
+
+  echo "  Attesting evaluation result (allow=${COMPLIANT_FLAG})..."
+
   # 4. Attest evaluation result to the trail for the current tag's commit SHA.
   #    The current tag's commit is always the topmost commit in the range, so
   #    its trail was already begun in the inner loop above.
-  
-  kosli attest generic \
+  #    Compliance is driven by the --jq ".allow == true" rule on the type:
+  #    allow: false → is_compliant: false. four-eyes.rego is attached as evidence.
+  kosli attest custom \
+    --type "four-eyes-result" \
     --name "four-eyes-result" \
-    --user-data "${EVAL_FILE}" \
-    --attachments "${SCRIPT_DIR}/four-eyes.rego" \
-    --compliant="${COMPLIANT_FLAG}" \
+    --attestation-data "${SUMMARY_FILE}" \
+    --attachments "${SCRIPT_DIR}/four-eyes.rego,${EVAL_FILE}" \
     --trail "${CURRENT_SHA}" \
     --flow "${KOSLI_FLOW}"
 
   if [[ "${CLEANUP}" == "true" ]]; then
-    rm -f "${EVAL_FILE}"
+    rm -f "${EVAL_FILE}" "${SUMMARY_FILE}"
   fi
 
 done
