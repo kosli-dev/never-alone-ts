@@ -141,13 +141,10 @@ The attachment is generated alongside the core file but not validated by `jsonsc
 
 ### Input path
 
-> **FINDING** — The input path depends on attestation type. Since `simulate_granular.sh` currently uses `attest generic` (not `attest custom`), the data is under `.user_data`. When the custom attestation type is updated (see section 6), it will move to `.attestation_data`.
-
-The policy uses a helper function rather than a global assignment, so the path is in one place to update:
+The policy reads from `.attestation_data` — the path used by `attest custom`. `attest generic` would use `.user_data`; that workaround phase is over.
 
 ```rego
-trail_data(trail) := trail.compliance_status.attestations_statuses["scr-data"].user_data
-# Change to .attestation_data once kosli attest custom is restored
+trail_data(trail) := trail.compliance_status.attestations_statuses["scr-data"].attestation_data
 ```
 
 The command used is `kosli evaluate trails` (plural), not `evaluate trail`. Input is `input.trails` (array), not `input.trail` (single object).
@@ -172,7 +169,7 @@ violations contains msg if {
 **New pattern (multiple trails, one commit per trail):**
 
 ```rego
-trail_data(trail) := trail.compliance_status.attestations_statuses["scr-data"].user_data
+trail_data(trail) := trail.compliance_status.attestations_statuses["scr-data"].attestation_data
 
 violations contains msg if {
     some trail in input.trails                 # <-- iterate trails
@@ -350,11 +347,15 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
   kosli evaluate trails ${TRAIL_LIST} --policy four-eyes.rego --flow "${KOSLI_FLOW}" --output json \
     > "eval_result_${CURRENT_TAG}.json" 2>/dev/null || true
 
-  # 6. Attest evaluation result to the current tag's commit trail
+  # 6. Attest evaluation result to the current tag's commit trail.
+  #    --compliant mirrors the evaluation exit code: 0 = pass, non-zero = fail.
   #    CURRENT_SHA is always the topmost commit in the range — its trail was begun in the inner loop.
+  COMPLIANT_FLAG="--compliant"
+  [[ "${EVAL_EXIT}" -ne 0 ]] && COMPLIANT_FLAG="--compliant=false"
   kosli attest generic --name four-eyes-result \
     --user-data "eval_result_${CURRENT_TAG}.json" \
-    --trail "${CURRENT_SHA}" --flow "${KOSLI_FLOW}"
+    --trail "${CURRENT_SHA}" --flow "${KOSLI_FLOW}" \
+    ${COMPLIANT_FLAG}
 done
 ```
 
@@ -362,9 +363,9 @@ done
 
 > **DESIGN DECIDED** — `kosli evaluate trails` (plural) is the mechanism. It takes the full list of commit SHAs in the release range as positional arguments and runs the Rego policy once with `input.trails` containing all of them. One call per release (at the outer loop level), not one call per commit.
 
-### Evaluation attestation placement
+### Evaluation attestation placement and compliance state
 
-> **IMPLEMENTED** — The evaluation result (`eval_result_<tag>.json`) is attested as a `four-eyes-result` generic attestation to the trail of `CURRENT_TAG`'s commit SHA. That trail already exists from the inner loop. This means the topmost commit in any release range carries both its own `scr-data` attestation and the release-level `four-eyes-result`. Confirmed working for all 9 tag pairs including the FAIL case (`v2.11.44→v2.11.45`).
+> **IMPLEMENTED** — The evaluation result (`eval_result_<tag>.json`) is attested as a `four-eyes-result` generic attestation to the trail of `CURRENT_TAG`'s commit SHA. That trail already exists from the inner loop. The attestation carries `--compliant` or `--compliant=false` depending on the `kosli evaluate trails` exit code, so the non-compliant release is visually distinct in the Kosli UI. Confirmed: trail `167ed936` (v2.11.45) shows a non-compliant `four-eyes-result`; all 8 other tags show compliant.
 
 ---
 
@@ -407,9 +408,9 @@ Using the full SHA (not short) avoids collision risk and matches Kosli trail nam
 
 ---
 
-## 11. Simulation results (2026-04-21)
+## 11. Simulation results (2026-04-21, final run)
 
-Flow `cli-granular-demo-20260421124227` — 9 tag pairs, all 9 evaluated:
+Flow `cli-granular-demo-20260421132612` — `attest custom` + compliance-flagged `four-eyes-result`. 9 tag pairs:
 
 | Range | Result | Note |
 | --- | --- | --- |
@@ -434,3 +435,62 @@ Auto-resolution picked up the most recent attested SHA each time — not the nom
 2. **`kosli get trail <sha>` direct lookup** — Does the Kosli CLI support fetching a single trail by name without paginating the full trail list? If it does, `baseTagResolver.ts` can be rewritten to walk the git history and do a point lookup per SHA (stopping at the first hit) rather than pre-fetching all trails. This matters for flows that accumulate thousands of per-commit trails over time.
 
 3. **`attest custom` vs `attest generic` and the Rego path** — **ANSWERED:** `attest custom` requires `--attestation-data` (not `--user-data`). The payload lands at `.attestation_data` in the Rego input. The existing type cannot be updated in place — `kosli delete attestation-type` + `kosli create attestation-type` is required. `setup-kosli-attestation-type.sh` now handles this idempotently. All three switches (schema, type, Rego path) are done and confirmed working.
+
+---
+
+## 13. Gaps and unthought-of areas
+
+Things the current implementation does not address, grouped by severity.
+
+### Correctness / data integrity
+
+**First-ever run on a fresh flow — unbounded range.**
+When `KOSLI_FLOW` exists but has no trails yet, `resolveBaseTag` falls back to `getInitialCommit`, which returns the very first commit in the repo's history. For a repo with years of history that could mean attesting thousands of commits in a single run. There is no bootstrapping mechanism other than setting `BASE_TAG` explicitly. _Mitigation needed: document that the first invocation must pass an explicit `BASE_TAG`, or add a `--max-commits` guard._
+
+Add a --max-commits guard, and set it default to 5000 commits.
+
+**Idempotency of re-runs.**
+If a CI job is retried after partial completion, the collector will re-write `att_data_<sha>.json` files (fine — deterministic) but `kosli begin trail` and `kosli attest custom` may fail or produce duplicate attestations if the trail already exists. The current script has no `--existing` or idempotency flag. _Unknown: does the Kosli CLI silently succeed or hard-fail on a duplicate `begin trail`? Needs testing._
+
+Kosli will append to the trail, so both operations are safe to do.
+
+**Output files written to CWD.**
+`generateGranularAttestation()` writes `att_data_<sha>.json` and `raw_<sha>.json` to `process.cwd()`. `simulate_granular.sh` assumes this equals `SCRIPT_DIR`. If the collector is invoked from a different working directory (e.g. a CI runner's workspace root), the shell script's `${SCRIPT_DIR}/att_data_${SHA}.json` path will not match where the files land. _Fix: add an `--output-dir` flag to `src/index.ts` and pass it explicitly from the shell script._
+
+Not applicable.
+
+**`kosli delete attestation-type` may be an invalid command.**
+During `setup-kosli-attestation-type.sh` the delete step printed the help text rather than deleting, indicating the command may not exist. The `|| true` masked it and `create` succeeded (possibly because no type existed yet). On a re-run when the type already exists, `create` may fail. _Needs verification: check `kosli delete --help` to confirm whether `attestation-type` is a valid sub-target._
+
+Remove deletion.
+
+### Dead code / cleanup
+
+**Old batch types and `collectCommit` still in the codebase.**
+`CommitData`, `PRDetails`, `AttestationData`, `collectCommit()` in `src/evaluator.ts`, `generateAttestationData()` stubs, and the old `simulate.sh` all remain. If the granular model is the only supported path going forward, these should be removed to prevent confusion. _Decision needed: deprecate-and-remove, or keep as a legacy batch mode for backward compatibility?_
+
+deprecate-and-remove.
+
+**`getTagForCommit` still exported from `src/git.ts`.**
+`resolveBaseTag` no longer calls it, but it may still be exported. Dead code that creates a false impression the system still resolves tags from SHAs.
+
+remove export.
+
+### Operational / production readiness
+
+**`four-eyes-result` attestation has no schema.**
+The evaluation result is attested as `generic` (no type, no schema). The payload format is whatever `kosli evaluate trails --output json` produces — a Kosli-internal format that could change between CLI versions. If the format changes, consumers of the stored `four-eyes-result` attestation (dashboards, downstream policies) break silently. _Option: define a thin `four-eyes-result` custom attestation type wrapping just `allow` (bool) + `violations` (string[])._
+
+**GitHub API rate limiting across large ranges.**
+`pLimit(4)` limits concurrency to 4 GitHub API calls in parallel per run. For repositories with large releases (50+ commits, each with active PRs), this could still approach the 5 000 requests/hour limit. PR data is cached per-run only — a re-run refetches everything. _Options: persist the PR cache between runs, reduce concurrency, or add explicit rate-limit retry logic._
+
+Try to make a seperate plan over how you would make a cache for simultainious runs on github actions spanning over multiple workflows. persist this in a different markdown file.
+
+**No CI/CD integration template.**
+`simulate_granular.sh` is a local simulation script. It has hardcoded absolute paths (`/home/sofus/git/cli`), `CLEANUP=false`, and no error recovery. A production GitHub Actions workflow that runs never-alone on every merge to `main` does not exist yet. The step sequence (collector → begin trail → attest → evaluate → attest result) needs to be expressed as a reusable workflow or composite action. _This is the primary remaining work before production use._
+
+**`scr.config.json` is embedded in every attestation.**
+The `config.exemptions.serviceAccounts` patterns are baked into each `att_data_<sha>.json` at generation time. Adding a new service account pattern only covers future attestations — past ones keep the old config. This is correct for audit immutability, but operators may not expect it. _Should be documented explicitly in the README._
+
+**Concurrent runs for the same flow.**
+If two CI jobs run `simulate_granular.sh` against the same flow simultaneously (e.g. two PRs merged in quick succession), they may both auto-resolve to the same base SHA, produce overlapping `git log` ranges, and create duplicate or conflicting trails. The Kosli API may reject duplicate trail names, causing one job to fail. _Mitigation: serialise runs using a lock (e.g. Kosli itself as the lock via `begin trail` atomicity), or run granular attestation as a queued job rather than a parallel one._

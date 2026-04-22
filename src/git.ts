@@ -28,16 +28,6 @@ export function getCommits(baseTag: string, currentTag: string, repoPath: string
   }
 }
 
-export function resolveSHA(ref: string, repoPath: string = process.cwd()): string | undefined {
-  if (!ref) return undefined;
-  try {
-    return execSync(`git rev-parse ${ref}`, { encoding: 'utf8', cwd: repoPath }).trim();
-  } catch (error) {
-    console.error(`Error resolving SHA for ${ref}: ${error}`);
-    return undefined;
-  }
-}
-
 
 export function getChangedFiles(sha: string, repoPath: string = process.cwd()): string[] {
   const command = `git show --name-only --pretty="format:" ${sha}`;
@@ -61,15 +51,6 @@ export function getCommitHistory(ref: string, repoPath: string = process.cwd()):
   }
 }
 
-export function getTagForCommit(sha: string, repoPath: string = process.cwd()): string | undefined {
-  try {
-    const output = execSync(`git tag --points-at ${sha}`, { encoding: 'utf8', cwd: repoPath }).trim();
-    if (!output) return undefined;
-    return output.split('\n')[0];
-  } catch {
-    return undefined;
-  }
-}
 
 export function getInitialCommit(repoPath: string = process.cwd()): string {
   try {

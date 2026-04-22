@@ -38,30 +38,6 @@ export interface CommitInfo {
   message: string;
 }
 
-export interface CommitData {
-  sha: string;
-  parent_shas: string[];
-  author: UserIdentity;
-  date: string;
-  message: string;
-  changed_files: string[];
-  pr_numbers: number[];
-}
-
-export interface PRDetails {
-  number: number;
-  url: string;
-  title: string;
-  author: UserIdentity;
-  state: string;
-  merged_at: string | null;
-  approvals: {
-    user: UserIdentity;
-    approved_at: string;
-  }[];
-  commits: CommitInfo[];
-}
-
 // ─── Granular (per-commit) attestation types ─────────────────────────────────
 
 export interface CommitSummary {
@@ -121,22 +97,4 @@ export interface RawAttachment {
   generated_at: string;
   github_commit: unknown;
   pull_requests: RawPRData[];
-}
-
-export interface AttestationData {
-  repository: string;
-  range: {
-    base: string;
-    base_sha?: string;
-    current: string;
-    current_sha?: string;
-  };
-  generated_at: string;
-  config: {
-    exemptions: {
-      serviceAccounts: string[];
-    };
-  };
-  commits: CommitData[];
-  pull_requests: Record<string, PRDetails>;
 }

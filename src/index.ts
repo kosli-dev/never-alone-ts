@@ -58,8 +58,16 @@ async function main() {
     console.log(`Analyzing repository: ${repoPath}`);
     console.log(`Range: ${config.baseTag || 'Repository Start'} to ${config.currentTag}`);
 
+    const maxCommits = 5000;
     const commits = getCommits(config.baseTag, config.currentTag, repoPath);
     console.log(`Found ${commits.length} commits.`);
+
+    if (commits.length > maxCommits) {
+      throw new Error(
+        `Range contains ${commits.length} commits, exceeding the limit of ${maxCommits}. ` +
+        `Set BASE_TAG explicitly to narrow the range.`
+      );
+    }
 
     const limit = pLimit(4);
     await Promise.all(

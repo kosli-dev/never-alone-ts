@@ -12,9 +12,6 @@ if [[ -z "${KOSLI_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "Deleting existing scr-data attestation type (if any)..."
-kosli delete attestation-type scr-data --org sofus-test 2>/dev/null || true
-
 echo "Creating scr-data attestation type with new per-commit schema..."
 kosli create attestation-type scr-data \
   --description "Source code review data for never-alone four-eyes verification (per-commit)" \
