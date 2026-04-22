@@ -4,8 +4,8 @@ set -euo pipefail
 # ── Configuration ─────────────────────────────────────────────────────────────
 export KOSLI_ORG="sofus-test"           # Kosli organisation name
 TIMESTAMP=$(date -u +"%Y%m%d%H%M%S")   # Unique suffix for flow name
-KOSLI_FLOW="cli-granular-demo-${TIMESTAMP}"
-KOSLI_ATTESTATION_NAME="scr-data"
+KOSLI_FLOW="cli-granular-demo-${TIMESTAMP}"             # Flow to create and populate
+KOSLI_ATTESTATION_NAME="scr-data"       # Attestation name written to each trail
 
 CLEANUP="false"                          # Set to "false" to keep generated files
 
@@ -69,7 +69,6 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
     BASE_TAG="${BASE_TAG}" \
     CURRENT_TAG="${CURRENT_TAG}" \
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
-    KOSLI_FLOW="${KOSLI_FLOW}" \
     KOSLI_ATTESTATION_NAME="${KOSLI_ATTESTATION_NAME}" \
     node "${SCRIPT_DIR}/dist/index.js" \
       --repo "${REPO}" \
@@ -133,34 +132,28 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
   EVAL_EXIT=0
   kosli evaluate trails ${TRAIL_LIST} \
     --policy "${SCRIPT_DIR}/four-eyes.rego" \
+    --show-input \
     --flow "${KOSLI_FLOW}" \
     --output json > "${EVAL_FILE}" 2>/dev/null || EVAL_EXIT=$?
 
-  if [[ "${EVAL_EXIT}" -eq 0 ]]; then
-    echo "  Result: PASS"
-  else
-    echo "  Result: FAIL"
-    python3 -c "
-import json
-d = json.load(open('${EVAL_FILE}'))
-for v in (d.get('violations') or []):
-    print('    -', v)
-"
+  COMPLIANT_FLAG="true"
+  if [[ "${EVAL_EXIT}" -ne 0 ]]; then
+    echo "  Policy violations found — attesting as non-compliant"
+    COMPLIANT_FLAG="false"
   fi
-
+  echo "  Attesting evaluation result (compliant=${COMPLIANT_FLAG})..."
+ 
   # 4. Attest evaluation result to the trail for the current tag's commit SHA.
   #    The current tag's commit is always the topmost commit in the range, so
   #    its trail was already begun in the inner loop above.
-  #    --compliant mirrors the exit code: 0 = pass, non-zero = fail.
-  COMPLIANT_FLAG="--compliant"
-  [[ "${EVAL_EXIT}" -ne 0 ]] && COMPLIANT_FLAG="--compliant=false"
-  echo "  Attesting evaluation result to trail ${CURRENT_SHA:0:7} (${CURRENT_TAG})..."
+  
   kosli attest generic \
     --name "four-eyes-result" \
     --user-data "${EVAL_FILE}" \
+    --attachments "${SCRIPT_DIR}/four-eyes.rego" \
+    --compliant="${COMPLIANT_FLAG}" \
     --trail "${CURRENT_SHA}" \
-    --flow "${KOSLI_FLOW}" \
-    ${COMPLIANT_FLAG}
+    --flow "${KOSLI_FLOW}"
 
   if [[ "${CLEANUP}" == "true" ]]; then
     rm -f "${EVAL_FILE}"
