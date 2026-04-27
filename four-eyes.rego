@@ -2,6 +2,9 @@ package policy
 
 import rego.v1
 
+# Four-eyes principle enforcement: every commit must have independent review.
+# This policy evaluates per-commit attestation data from Kosli and passes only
+# when all violations are resolved.
 default allow = false
 
 allow if count(violations) == 0
@@ -15,6 +18,8 @@ allow if count(violations) == 0
 #
 # Attested via: kosli attest pullrequest github --name pr-review --commit <sha>
 # ---------------------------------------------------------------------------
+
+# Extract PR attestation payload from a trail.
 pr_attest(trail) := trail.compliance_status.attestations_statuses["pr-review"]
 
 # ---------------------------------------------------------------------------
@@ -37,7 +42,7 @@ is_merge_commit(trail, pr) if {
 	trail.name == pr.merge_commit
 }
 
-# Regular commit: PR branch authors + PR author all need independent approval.
+# Regular commit: PR branch authors + PR author all need independent approval after last code commit.
 has_independent_approval(trail, pr) if {
 	not is_merge_commit(trail, pr)
 	cutoff := latest_commit_ts(pr)
@@ -51,7 +56,7 @@ has_independent_approval(trail, pr) if {
 }
 
 # Merge commit: only PR branch commit authors need independent approval.
-# The person who clicked Merge did not write code and needs no separate review.
+# The merge button clicker did not write code and requires no separate review.
 has_independent_approval(trail, pr) if {
 	is_merge_commit(trail, pr)
 	cutoff := latest_commit_ts(pr)
@@ -78,13 +83,13 @@ service_account_patterns := {
 	"noreply@github.com"
 }
 
+# Commit author is a service account (CI, GitHub Actions, dependabot, etc).
 is_service_account(trail) if {
 	some pattern in service_account_patterns
 	regex.match(pattern, trail.git_commit_info.author)
 }
 
-# PR commits created by web-flow or Copilot co-authorship use the GitHub service
-# identity and have no resolvable GitHub user account.
+# PR commit author is unresolvable (web-flow edits, Copilot co-auth).
 is_web_flow_commit(c) if {
 	some pattern in service_account_patterns
 	regex.match(pattern, object.get(c, "author", ""))
@@ -94,6 +99,7 @@ is_web_flow_commit(c) if {
 # Helpers — multi-PR support
 # ---------------------------------------------------------------------------
 
+# Check if any associated PR has independent approval for the commit.
 has_any_pr_approval(trail, attest) if {
 	some pr in attest.pull_requests
 	has_independent_approval(trail, pr)
@@ -103,12 +109,14 @@ has_any_pr_approval(trail, attest) if {
 # Violations — iterate over all trails
 # ---------------------------------------------------------------------------
 
+# Missing attestation: no PR review data collected for this commit.
 violations contains msg if {
 	some trail in input.trails
 	not trail.compliance_status.attestations_statuses["pr-review"]
 	msg := sprintf("Trail %v: pr-review attestation is missing", [trail.name])
 }
 
+# Unverifiable identity: commit author has no resolvable GitHub account and is not a known service account.
 violations contains msg if {
 	some trail in input.trails
 	attest := pr_attest(trail)
@@ -123,6 +131,7 @@ violations contains msg if {
 	)
 }
 
+# Missing PR: commit has no associated merged pull request (non-service-account commits must come through a PR).
 violations contains msg if {
 	some trail in input.trails
 	not is_service_account(trail)
@@ -134,6 +143,7 @@ violations contains msg if {
 	)
 }
 
+# Missing approval: commit has an associated PR but no independent approval from someone other than the authors.
 violations contains msg if {
 	some trail in input.trails
 	not is_service_account(trail)

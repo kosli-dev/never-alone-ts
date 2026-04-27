@@ -15,8 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install          # Install dependencies
 npm run build        # Compile TypeScript → dist/
 npm test             # Run Jest unit tests
-npm run test:rego    # Run Rego policy tests (requires OPA CLI)
-bash runall.sh       # Build + Jest + Rego tests + simulation end-to-end
+ndocker run --rm -v "$(pwd)":/work openpolicyagent/opa test /work/four-eyes.rego /work/four-eyes_test.rego -v    # Run Rego policy tests (requires Docker)
 ```
 
 Run a single Jest test file:
@@ -29,7 +28,7 @@ Run the collector (range mode):
 BASE_TAG=v1.0.0 CURRENT_TAG=v1.1.0 GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=... npm start -- --repo /path/to/repo
 ```
 
-Run the collector (single commit):
+Run the collector (single commit, tool resolution):
 ```bash
 GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=... npm start -- --commit <sha>
 ```
