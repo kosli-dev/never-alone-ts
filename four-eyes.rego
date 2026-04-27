@@ -2,6 +2,9 @@ package policy
 
 import rego.v1
 
+# Four-eyes principle enforcement: every commit must have independent review.
+# This policy evaluates per-commit attestation data from Kosli and passes only
+# when all violations are resolved.
 default allow = false
 
 allow if count(violations) == 0
@@ -10,178 +13,145 @@ allow if count(violations) == 0
 # Attestation data
 #
 # Used with `kosli evaluate trails` (plural). Each trail in input.trails
-# represents one commit. The per-commit attestation payload is at:
-#   trail.compliance_status.attestations_statuses["scr-data"].user_data
+# represents one commit. The PR attestation payload is at:
+#   trail.compliance_status.attestations_statuses["pr-review"]
 #
-# (Generic attestations use .user_data; custom attestations use .attestation_data)
-#
-# Verify the exact path in your environment with:
-#   kosli evaluate trails <sha1> <sha2> ... --policy four-eyes.rego \
-#     --show-input --output json
+# Attested via: kosli attest pullrequest github --name pr-review --commit <sha>
 # ---------------------------------------------------------------------------
-trail_data(trail) := trail.compliance_status.attestations_statuses["scr-data"].attestation_data
 
-# ---------------------------------------------------------------------------
-# Behaviour: post-approval merge-from-base commits
-#
-# "ignore" — exclude merge-from-base commits (multi-parent commits where at
-#            least one parent originates outside the PR) when checking whether
-#            an approval post-dates all code changes. Such commits only bring
-#            in content already reviewed on the base branch.
-#
-# "strict" — any commit pushed after the last approval causes a failure,
-#            including merge-from-base commits.
-# ---------------------------------------------------------------------------
-post_approval_merge_commits := "strict"  # "ignore" or "strict"
+# Extract PR attestation payload from a trail.
+pr_attest(trail) := trail.compliance_status.attestations_statuses["pr-review"]
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-pr_commit_shas(pr) := {c.sha | some c in pr.pr_commits}
-
-# Logins of every PR branch commit author whose identity could be resolved.
-pr_commit_authors(pr) := {login |
-	some c in pr.pr_commits
-	login := c.author.login
-	login != null
+# GitHub usernames of all PR branch commit authors whose identity was resolved.
+pr_commit_authors(pr) := {u |
+	some c in pr.commits
+	u := c.author_username
+	u != null
 }
 
-is_merge_from_base(commit, pr) if {
-	count(commit.parent_shas) > 1
-	some parent in commit.parent_shas
-	not pr_commit_shas(pr)[parent]
+# Latest Unix timestamp among PR branch commits.
+latest_commit_ts(pr) := max({c.timestamp | some c in pr.commits})
+
+# A commit is the merge commit when the PR's merge_commit field matches the
+# trail name (which is the commit SHA). Covers squash, regular, and rebase merges.
+is_merge_commit(trail, pr) if {
+	trail.name == pr.merge_commit
 }
 
-relevant_pr_commits(pr) := filtered if {
-	post_approval_merge_commits == "ignore"
-	filtered := [c | some c in pr.pr_commits; not is_merge_from_base(c, pr)]
-	count(filtered) > 0
-}
-
-relevant_pr_commits(pr) := pr.pr_commits if {
-	post_approval_merge_commits == "strict"
-}
-
-# Fallback: if every commit in the PR is a merge-from-base, use them all.
-relevant_pr_commits(pr) := pr.pr_commits if {
-	post_approval_merge_commits == "ignore"
-	filtered := [c | some c in pr.pr_commits; not is_merge_from_base(c, pr)]
-	count(filtered) == 0
-}
-
-latest_relevant_commit_ns(pr) := max(
-	{time.parse_rfc3339_ns(c.date) | some c in relevant_pr_commits(pr)},
-)
-
-# Regular commits: PR branch authors + this commit's own author must all have independent approval.
-has_independent_approval(commit, pr) if {
-	not is_merge_commit(commit)
-	cutoff := latest_relevant_commit_ns(pr)
-	all_authors := (pr_commit_authors(pr) | {commit.author.login}) - {null}
+# Regular commit: PR branch authors + PR author all need independent approval after last code commit.
+has_independent_approval(trail, pr) if {
+	not is_merge_commit(trail, pr)
+	cutoff := latest_commit_ts(pr)
+	all_authors := pr_commit_authors(pr) | {pr.author}
 	count(all_authors) > 0
-	every author_login in all_authors {
-		some approval in pr.approvals
-		approval.user.login != author_login
-		time.parse_rfc3339_ns(approval.approved_at) > cutoff
+	every author in all_authors {
+		some approver in pr.approvers
+		approver.username != author
+		approver.timestamp > cutoff
 	}
 }
 
-# Merge commits: only PR branch authors matter — the merger clicked a button, not code.
-# Including the merger's login would cause false positives when a reviewer merges the PR.
-has_independent_approval(commit, pr) if {
-	is_merge_commit(commit)
-	cutoff := latest_relevant_commit_ns(pr)
-	all_authors := pr_commit_authors(pr) - {null}
+# Merge commit: only PR branch commit authors need independent approval.
+# The merge button clicker did not write code and requires no separate review.
+has_independent_approval(trail, pr) if {
+	is_merge_commit(trail, pr)
+	cutoff := latest_commit_ts(pr)
+	all_authors := pr_commit_authors(pr)
 	count(all_authors) > 0
-	every author_login in all_authors {
-		some approval in pr.approvals
-		approval.user.login != author_login
-		time.parse_rfc3339_ns(approval.approved_at) > cutoff
+	every author in all_authors {
+		some approver in pr.approvers
+		approver.username != author
+		approver.timestamp > cutoff
 	}
 }
 
 # ---------------------------------------------------------------------------
 # Service account exemption
 #
-# Patterns are matched against both git_name and login. Add organisation-
-# specific bot accounts alongside the defaults below.
+# Matched against trail.git_commit_info.author, which is "Name <email>" format.
+# Patterns work against the full string, e.g.:
+#   "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
 # ---------------------------------------------------------------------------
 
 service_account_patterns := {
 	"svc_.*",
-	"dependabot\\[bot\\]",
-	"github-actions\\[bot\\]",
+	".*\\[bot\\]",
+	"noreply@github.com"
 }
 
-is_service_account(commit) if {
+# Commit author is a service account (CI, GitHub Actions, dependabot, etc).
+is_service_account(trail) if {
 	some pattern in service_account_patterns
-	regex.match(pattern, commit.author.git_name)
+	regex.match(pattern, trail.git_commit_info.author)
 }
 
-is_service_account(commit) if {
+# PR commit author is unresolvable (web-flow edits, Copilot co-auth).
+is_web_flow_commit(c) if {
 	some pattern in service_account_patterns
-	regex.match(pattern, commit.author.login)
-}
-
-is_merge_commit(commit) if {
-	count(commit.parent_shas) > 1
+	regex.match(pattern, object.get(c, "author", ""))
 }
 
 # ---------------------------------------------------------------------------
 # Helpers — multi-PR support
 # ---------------------------------------------------------------------------
 
-has_any_pr_approval(commit, attestation) if {
-	some pr in attestation.pull_requests
-	has_independent_approval(commit, pr)
+# Check if any associated PR has independent approval for the commit.
+has_any_pr_approval(trail, attest) if {
+	some pr in attest.pull_requests
+	has_independent_approval(trail, pr)
 }
-
 
 # ---------------------------------------------------------------------------
 # Violations — iterate over all trails
 # ---------------------------------------------------------------------------
 
+# Missing attestation: no PR review data collected for this commit.
 violations contains msg if {
 	some trail in input.trails
-	not trail.compliance_status.attestations_statuses["scr-data"]
-	msg := sprintf("Trail %v: scr-data attestation is missing", [trail.name])
+	not trail.compliance_status.attestations_statuses["pr-review"]
+	msg := sprintf("Trail %v: pr-review attestation is missing", [trail.name])
 }
 
+# Unverifiable identity: commit author has no resolvable GitHub account and is not a known service account.
 violations contains msg if {
 	some trail in input.trails
-	attestation := trail_data(trail)
-	some pr in attestation.pull_requests
-	some c in pr.pr_commits
-	c.author.login == null
-	not is_service_account(c)
+	attest := pr_attest(trail)
+	some pr in attest.pull_requests
+	some c in pr.commits
+	object.get(c, "author_username", null) == null
+	not is_service_account(trail)
+	not is_web_flow_commit(c)
 	msg := sprintf(
-		"PR #%v: commit %v author '%v <%v>' has no linked GitHub account — identity unverifiable",
-		[pr.number, substring(c.sha, 0, 7), c.author.git_name, c.author.git_email],
+		"PR %v: commit %v has no linked GitHub account — identity unverifiable",
+		[pr.url, substring(c.sha1, 0, 7)],
 	)
 }
 
+# Missing PR: commit has no associated merged pull request (non-service-account commits must come through a PR).
 violations contains msg if {
 	some trail in input.trails
-	attestation := trail_data(trail)
-	commit := attestation.commit
-	not is_service_account(commit)
-	count(attestation.pull_requests) == 0
+	not is_service_account(trail)
+	attest := pr_attest(trail)
+	count(attest.pull_requests) == 0
 	msg := sprintf(
-		"Commit %v (%v): no associated PR found",
-		[substring(commit.sha, 0, 7), commit.message],
+		"Commit %v: no associated PR found",
+		[substring(trail.name, 0, 7)],
 	)
 }
 
+# Missing approval: commit has an associated PR but no independent approval from someone other than the authors.
 violations contains msg if {
 	some trail in input.trails
-	attestation := trail_data(trail)
-	commit := attestation.commit
-	not is_service_account(commit)
-	count(attestation.pull_requests) > 0
-	not has_any_pr_approval(commit, attestation)
+	not is_service_account(trail)
+	attest := pr_attest(trail)
+	count(attest.pull_requests) > 0
+	not has_any_pr_approval(trail, attest)
 	msg := sprintf(
-		"Commit %v (%v): no independent approval after latest code commit",
-		[substring(commit.sha, 0, 7), commit.message],
+		"Commit %v: no independent approval after latest code commit",
+		[substring(trail.name, 0, 7)],
 	)
 }

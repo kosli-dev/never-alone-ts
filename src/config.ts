@@ -1,44 +1,35 @@
 import * as dotenv from 'dotenv';
-import { Config } from './types';
 
-export function loadGranularConfig(options: { envFile?: string } = {}): {
+export interface Config {
+  baseTag: string;
+  currentTag: string;
   githubRepository: string;
   githubToken: string;
-} {
-  const { envFile } = options;
-  dotenv.config(envFile ? { path: envFile } : {});
-
-  const githubRepository = process.env.GITHUB_REPOSITORY || '';
-  const githubToken = process.env.GITHUB_TOKEN || '';
-
-  if (!githubRepository || !githubToken) {
-    throw new Error('Missing required environment variables (GITHUB_REPOSITORY, GITHUB_TOKEN).');
-  }
-
-  return { githubRepository, githubToken };
+  kosliFlow: string;
+  kosliAttestationName: string;
 }
 
 export function loadConfig(options: { envFile?: string } = {}): Config {
-  const { envFile } = options;
-  dotenv.config(envFile ? { path: envFile } : {});
+  dotenv.config(options.envFile ? { path: options.envFile } : {});
 
-  const baseTag = process.env.BASE_TAG || '';
-  const currentTag = process.env.CURRENT_TAG || '';
-  const githubRepository = process.env.GITHUB_REPOSITORY || '';
-  const githubToken = process.env.GITHUB_TOKEN || '';
-  const kosliFlow = process.env.KOSLI_FLOW || '';
-  const kosliAttestationName = process.env.KOSLI_ATTESTATION_NAME || 'scr-data';
+  const required: Record<string, string | undefined> = {
+    CURRENT_TAG: process.env.CURRENT_TAG,
+    GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY,
+    GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    KOSLI_FLOW: process.env.KOSLI_FLOW,
+  };
 
-  if (!currentTag || !githubRepository || !githubToken) {
-    throw new Error('Missing required environment variables (CURRENT_TAG, GITHUB_REPOSITORY, GITHUB_TOKEN). Please check your .env file or environment.');
+  const missing = Object.entries(required).filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
   return {
-    baseTag,
-    currentTag,
-    githubRepository,
-    githubToken,
-    kosliFlow,
-    kosliAttestationName,
+    baseTag: process.env.BASE_TAG || '',
+    currentTag: required.CURRENT_TAG!,
+    githubRepository: required.GITHUB_REPOSITORY!,
+    githubToken: required.GITHUB_TOKEN!,
+    kosliFlow: required.KOSLI_FLOW!,
+    kosliAttestationName: process.env.KOSLI_ATTESTATION_NAME || 'pr-review',
   };
 }

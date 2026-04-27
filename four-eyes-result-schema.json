@@ -4,7 +4,7 @@
   "title": "FourEyesResult",
   "description": "Policy evaluation result for a release commit range, produced by kosli evaluate trails against four-eyes.rego",
   "type": "object",
-  "required": ["allow", "violations", "evaluated_at", "repository", "base_commit", "current_commit"],
+  "required": ["allow", "violations"],
   "additionalProperties": false,
   "properties": {
     "allow": {
@@ -37,6 +37,10 @@
     "current_commit": {
       "type": "string",
       "description": "SHA of the inclusive range end (the HEAD commit of this release, named as the attestation trail)"
+    },
+    "input": {
+      "type": "object",
+      "description": "Raw trails input data included when kosli evaluate trails is run with --show-input"
     }
   }
 }

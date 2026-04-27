@@ -12,12 +12,6 @@ if [[ -z "${KOSLI_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "Creating scr-data attestation type (per-commit source code review data)..."
-kosli create attestation-type scr-data \
-  --description "Source code review data for never-alone four-eyes verification (per-commit)" \
-  --schema "${SCRIPT_DIR}/jsonschema.json" \
-  --org sofus-test
-
 echo "Creating four-eyes-result attestation type (release-level policy evaluation result)..."
 kosli create attestation-type four-eyes-result \
   --description "Four-eyes policy evaluation result for a release commit range (never-alone)" \

@@ -1,10 +1,8 @@
 import * as path from 'path';
+import { spawn } from 'child_process';
 import pLimit from 'p-limit';
-import { loadConfig, loadGranularConfig } from './config';
-import { getCommits, getSingleCommit } from './git';
-import { GitHubClient } from './github';
-import { Collector } from './evaluator';
-import { generateGranularAttestation } from './reporter';
+import { loadConfig } from './config';
+import { getCommits } from './git';
 import { resolveBaseTag } from './baseTagResolver';
 
 function parsePathArg(args: string[], flag: string): string | undefined {
@@ -17,69 +15,73 @@ function parseStringArg(args: string[], flag: string): string | undefined {
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : undefined;
 }
 
+function kosli(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('kosli', args, { stdio: 'inherit' });
+    proc.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(`kosli ${args.slice(0, 2).join(' ')} exited with code ${code}`));
+    });
+    proc.on('error', reject);
+  });
+}
+
+async function attestCommit(sha: string, config: ReturnType<typeof loadConfig>, repoPath: string): Promise<void> {
+  const githubOrg = config.githubRepository.split('/')[0];
+
+  await kosli([
+    'begin', 'trail', sha,
+    '--flow', config.kosliFlow,
+    '--commit', sha,
+    '--repo-root', repoPath,
+  ]);
+
+  await kosli([
+    'attest', 'pullrequest', 'github',
+    '--name', config.kosliAttestationName,
+    '--github-token', config.githubToken,
+    '--github-org', githubOrg,
+    '--commit', sha,
+    '--repo-root', repoPath,
+    '--repository', config.githubRepository,
+    '--flow', config.kosliFlow,
+    '--trail', sha,
+  ]);
+}
+
 async function main() {
   try {
     const args = process.argv.slice(2);
     const repoPath = parsePathArg(args, '--repo') ?? process.cwd();
     const envFile = parsePathArg(args, '--env-file');
-    const commitSha = parseStringArg(args, '--commit');
 
-    // ─── Per-commit (granular) mode ───────────────────────────────────────────
-    if (commitSha) {
-      const config = loadGranularConfig({ envFile });
-      const github = new GitHubClient(config.githubRepository, config.githubToken);
-      const collector = new Collector(github, repoPath);
-
-      console.log(`Collecting commit ${commitSha.substring(0, 7)} from ${config.githubRepository}`);
-      const commit = getSingleCommit(commitSha, repoPath);
-      const { commitSummary, pullRequests, rawData } = await collector.collectCommitGranular(commit);
-      generateGranularAttestation(commitSummary, pullRequests, rawData, config);
-
-      process.exit(0);
-      return;
-    }
-
-    // ─── Range (batch) mode ───────────────────────────────────────────────────
-    // Writes one att_data_<sha>.json + raw_<sha>.json per commit in range.
-    // If BASE_TAG is not set but KOSLI_FLOW is, the base is auto-resolved from
-    // the most recent attested commit in that flow.
     const config = loadConfig({ envFile });
 
-    const flow = parseStringArg(args, '--flow') || config.kosliFlow;
-    if (flow && !config.baseTag) {
-      console.log(`Auto-resolving base tag using Kosli flow: ${flow}`);
-      config.baseTag = await resolveBaseTag(flow, config.kosliAttestationName, config.currentTag, repoPath);
+    if (!config.baseTag) {
+      console.error(`Auto-resolving base using Kosli flow: ${config.kosliFlow}`);
+      config.baseTag = await resolveBaseTag(config.kosliFlow, config.kosliAttestationName, config.currentTag, repoPath);
     }
 
-    const github = new GitHubClient(config.githubRepository, config.githubToken);
-    const collector = new Collector(github, repoPath);
+    console.error(`Range: ${config.baseTag || 'repository start'} → ${config.currentTag}`);
 
-    console.log(`Analyzing repository: ${repoPath}`);
-    console.log(`Range: ${config.baseTag || 'Repository Start'} to ${config.currentTag}`);
-
-    const maxCommits = 5000;
     const commits = getCommits(config.baseTag, config.currentTag, repoPath);
-    console.log(`Found ${commits.length} commits.`);
+    console.error(`Found ${commits.length} commits.`);
 
-    if (commits.length > maxCommits) {
-      throw new Error(
-        `Range contains ${commits.length} commits, exceeding the limit of ${maxCommits}. ` +
-        `Set BASE_TAG explicitly to narrow the range.`
-      );
+    if (commits.length > 5000) {
+      throw new Error(`Range contains ${commits.length} commits (limit 5000). Set BASE_TAG to narrow range.`);
     }
 
     const limit = pLimit(4);
     await Promise.all(
       commits.map(commit => limit(async () => {
-        console.log(`Collecting commit ${commit.sha.substring(0, 7)}: ${commit.message.substring(0, 30)}...`);
-        const { commitSummary, pullRequests, rawData } = await collector.collectCommitGranular(commit);
-        generateGranularAttestation(commitSummary, pullRequests, rawData, config);
+        console.error(`  ${commit.sha.substring(0, 7)}: ${commit.message.substring(0, 60)}`);
+        await attestCommit(commit.sha, config, repoPath);
       }))
     );
 
     process.exit(0);
   } catch (error) {
-    console.error(`\nError during execution: ${error instanceof Error ? error.message : error}`);
+    console.error(`Error: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
   }
 }
