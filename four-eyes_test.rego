@@ -441,3 +441,23 @@ test_absent_username_approver_fails if {
 	some msg in v
 	contains(msg, "independent approval")
 }
+
+# ---------------------------------------------------------------------------
+# Input structure guard
+# ---------------------------------------------------------------------------
+
+# input.trails absent: policy must fail closed, not silently allow everything
+test_missing_trails_key_fails_closed if {
+	v := violations with input as {}
+	some msg in v
+	contains(msg, "input.trails is missing")
+	not allow with input as {}
+}
+
+# input.trails is a non-array (e.g. typo, singular object): policy must fail closed
+test_wrong_trails_type_fails_closed if {
+	v := violations with input as {"trails": "not-an-array"}
+	some msg in v
+	contains(msg, "input.trails is missing")
+	not allow with input as {"trails": "not-an-array"}
+}

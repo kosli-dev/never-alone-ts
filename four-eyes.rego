@@ -113,6 +113,15 @@ has_any_pr_approval(trail, attest) if {
 # Violations — iterate over all trails
 # ---------------------------------------------------------------------------
 
+# Guard: if input.trails is absent or not an array, every other rule silently
+# skips iteration and violations stays empty, making allow=true. Fail closed instead.
+# object.get ensures the argument to is_array is always defined (avoids undefined-arg
+# propagation that would make `not is_array(undefined)` silently skip the rule).
+violations contains "Policy error: input.trails is missing or not an array — cannot evaluate" if {
+	trails := object.get(input, "trails", null)
+	not is_array(trails)
+}
+
 # Missing attestation: no PR review data collected for this commit.
 violations contains msg if {
 	some trail in input.trails
