@@ -7,165 +7,140 @@ import rego.v1
 # ---------------------------------------------------------------------------
 
 # One trail = one commit. The trail name is the commit SHA.
-make_trail(commit_obj, prs) := {
-	"name": commit_obj.sha,
-	"compliance_status": {"attestations_statuses": {"scr-data": {"attestation_data": {
-		"commit_sha": commit_obj.sha,
-		"repository": "owner/repo",
-		"generated_at": "2023-01-01T10:00:00Z",
-		"commit": commit_obj,
-		"pull_requests": prs,
-	}}}},
+# author_str is "Name <email>" format, matching trail.git_commit_info.author.
+make_trail(sha, author_str, prs) := {
+	"name": sha,
+	"git_commit_info": {"author": author_str, "sha1": sha, "timestamp": 1000100},
+	"compliance_status": {"attestations_statuses": {"pr-review": {"pull_requests": prs}}},
 }
 
 make_input(trails) := {"trails": trails}
 
-commit(sha, author_login, message, changed_files) := {
-	"sha": sha,
-	"parent_shas": ["parent1"],
-	"author": {"git_name": author_login, "login": author_login},
-	"date": "2023-01-01T10:00:00Z",
-	"message": message,
-	"changed_files": changed_files,
+# pr_commit: a commit on the PR branch (Unix timestamps)
+pr_commit(sha, username) := {
+	"sha1": sha,
+	"author_username": username,
+	"timestamp": 1000000,
 }
 
-pr_commit(sha) := {
-	"sha": sha,
-	"parent_shas": ["parent1"],
-	"author": {"login": "alice"},
-	"date": "2023-01-01T09:00:00Z",
-	"message": "code change",
+pr_commit_null_user(sha) := {
+	"sha1": sha,
+	"author_username": null,
+	"timestamp": 1000000,
 }
 
-pr_commit_by(sha, login) := {
-	"sha": sha,
-	"parent_shas": ["parent1"],
-	"author": {"login": login},
-	"date": "2023-01-01T09:00:00Z",
-	"message": "code change",
+# pr_commit_no_user: author_username field absent (as Kosli sends for unresolvable identities)
+pr_commit_no_user(sha) := {
+	"sha1": sha,
+	"timestamp": 1000000,
 }
 
-pr_commit_no_github(sha, git_name, git_email) := {
-	"sha": sha,
-	"parent_shas": ["parent1"],
-	"author": {"git_name": git_name, "git_email": git_email, "login": null},
-	"date": "2023-01-01T09:00:00Z",
-	"message": "code change",
+# pr_commit_web_flow: Copilot co-author or GitHub web-flow commit — no author_username, author is GitHub
+pr_commit_web_flow(sha) := {
+	"sha1": sha,
+	"author": "GitHub <noreply@github.com>",
+	"timestamp": 1000000,
 }
 
-approval(login, approved_at) := {"user": {"login": login}, "approved_at": approved_at}
+# approval: an approver entry
+approval(username, ts) := {"username": username, "timestamp": ts, "state": "APPROVED"}
 
-make_pr(number, pr_commits, approvals) := {
-	"number": number,
+# make_pr builds a PR object.
+# merge_sha: SHA that equals trail.name when this is a merge commit trail.
+# pr_author: GitHub username of the PR creator.
+make_pr(merge_sha, pr_author, commits, approvers) := {
 	"url": "https://github.com/owner/repo/pull/42",
-	"title": "test PR",
-	"state": "closed",
-	"merged_at": "2023-01-01T11:00:00Z",
-	"author": {"login": "alice"},
-	"approvals": approvals,
-	"pr_commits": pr_commits,
+	"merge_commit": merge_sha,
+	"author": pr_author,
+	"commits": commits,
+	"approvers": approvers,
+	"state": "MERGED",
 }
 
 # ---------------------------------------------------------------------------
 # Missing attestation
 # ---------------------------------------------------------------------------
 
-# Scenario 0 — scr-data attestation absent from trail → violation fires
+# Scenario 0 — pr-review attestation absent from trail → violation fires
 test_missing_attestation_fails if {
-	v := violations with input as make_input([{"name": "abc1234", "compliance_status": {"attestations_statuses": {}}}])
+	v := violations with input as make_input([{
+		"name": "abc1234",
+		"git_commit_info": {"author": "alice <alice@example.com>", "sha1": "abc1234", "timestamp": 1000000},
+		"compliance_status": {"attestations_statuses": {}},
+	}])
 	some msg in v
-	contains(msg, "scr-data attestation is missing")
+	contains(msg, "pr-review attestation is missing")
 }
 
 # ---------------------------------------------------------------------------
-# Service account
+# Service account exemption
 # ---------------------------------------------------------------------------
 
-# Scenario 2 — svc_.* pattern (generic service account prefix)
+# svc_.* pattern — generic service account prefix
 test_service_account_svc_prefix_passes if {
-	c := commit("abc1234", "svc_deployer", "automated release", ["deploy/config.yaml"])
-	count(violations) == 0 with input as make_input([make_trail(c, [])])
+	trail := make_trail("abc1234", "svc_deployer <svc@kosli.com>", [])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# dependabot[bot] — GitHub's dependency update bot
+# dependabot[bot] — covered by .*\[bot\] pattern
 test_service_account_dependabot_passes if {
-	c := commit("abc1234", "dependabot[bot]", "chore: bump lodash from 4.17.20 to 4.17.21", ["package.json"])
-	count(violations) == 0 with input as make_input([make_trail(c, [])])
+	trail := make_trail("abc1234", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", [])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# github-actions[bot] — GitHub Actions automation commits
+# github-actions[bot] — covered by .*\[bot\] pattern
 test_service_account_github_actions_passes if {
-	c := commit("abc1234", "github-actions[bot]", "chore: update generated changelog", ["CHANGELOG.md"])
-	count(violations) == 0 with input as make_input([make_trail(c, [])])
+	trail := make_trail("abc1234", "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>", [])
+	count(violations) == 0 with input as make_input([trail])
+}
+
+# ci-signed-commit-bot[bot] — GitHub App that signs commits on behalf of humans
+test_service_account_ci_signed_commit_bot_passes if {
+	trail := make_trail("abc1234", "ci-signed-commit-bot[bot] <247774526+ci-signed-commit-bot[bot]@users.noreply.github.com>", [])
+	count(violations) == 0 with input as make_input([trail])
 }
 
 # Regular user must not be treated as a service account
 test_regular_user_not_exempt if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	v := violations with input as make_input([make_trail(c, [])])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "no associated PR")
-}
-
-# Service account pattern can also match via login field
-test_service_account_matched_via_login if {
-	c := {
-		"sha": "abc1234",
-		"parent_shas": ["parent1"],
-		"author": {"git_name": "Dependabot", "login": "dependabot[bot]"},
-		"date": "2023-01-01T10:00:00Z",
-		"message": "chore: bump dep",
-		"changed_files": ["go.sum"],
-	}
-	count(violations) == 0 with input as make_input([make_trail(c, [])])
 }
 
 # ---------------------------------------------------------------------------
-# Merge commits
+# Merge commit detection via pr.merge_commit == trail.name
 # ---------------------------------------------------------------------------
 
-# Scenario 3 — Merge commit (multiple parents) linked to PR with independent approval → PASS
-test_merge_commit_multiple_parents_passes if {
-	c := {
-		"sha": "abc1234",
-		"parent_shas": ["parent1", "parent2"],
-		"author": {"login": "alice"},
-		"date": "2023-01-01T10:00:00Z",
-		"message": "Merge pull request #42 from alice/feature",
-		"changed_files": ["src/app.ts"],
-	}
-	pr := make_pr(42, [pr_commit_by("sha_alice", "alice")], [approval("bob", "2023-01-01T09:00:01Z")])
-	count(violations) == 0 with input as make_input([make_trail(c, [pr])])
+# Scenario 3 — merge commit (merge_commit == trail.name), independent approval → PASS
+test_merge_commit_passes if {
+	pr := make_pr("abc1234", "alice", [pr_commit("sha_alice", "alice")], [approval("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# Scenario 3 (no PR) — Merge commit with no associated PR → violation
-test_merge_commit_multiple_parents_no_pr_fails if {
-	c := {
-		"sha": "abc1234",
-		"parent_shas": ["parent1", "parent2"],
-		"author": {"login": "alice"},
-		"date": "2023-01-01T10:00:00Z",
-		"message": "Merge pull request #42 from alice/feature",
-		"changed_files": ["src/app.ts"],
-	}
-	v := violations with input as make_input([make_trail(c, [])])
+# Scenario 3 (no PR) — trail with no associated PR → violation
+test_merge_commit_no_pr_fails if {
+	trail := make_trail("abc1234", "alice <alice@example.com>", [])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "no associated PR")
 }
 
-# Scenario 4 — Fake merge message on single-parent commit is NOT a merge commit
-test_fake_merge_message_single_parent_requires_pr if {
-	c := commit("abc1234", "alice", "Merge pull request #42 from alice/feature", ["src/app.ts"])
-	v := violations with input as make_input([make_trail(c, [])])
-	some msg in v
-	contains(msg, "no associated PR")
+# Non-merge commit (merge_commit != trail.name) — pr.author also counted in all_authors
+test_non_merge_commit_pr_author_counted if {
+	# trail SHA is "abc1234" but merge_commit is "def5678" → non-merge path
+	# pr.author = "alice", pr commits by alice; bob must approve alice
+	pr := make_pr("def5678", "alice", [pr_commit("sha_alice", "alice")], [approval("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# Scenario 4 (self-approval) — Fake merge commit linked to PR but self-approved only → violation
-test_fake_merge_message_self_approval_fails if {
-	c := commit("abc1234", "alice", "Merge pull request #42 from alice/feature", ["src/app.ts"])
-	pr := make_pr(42, [pr_commit_by("abc1234", "alice")], [approval("alice", "2023-01-01T10:00:01Z")])
-	v := violations with input as make_input([make_trail(c, [pr])])
+# Non-merge commit self-approval: pr.author approves, but pr.author == pr commit author → fail
+test_non_merge_commit_self_approval_fails if {
+	pr := make_pr("def5678", "alice", [pr_commit("sha_alice", "alice")], [approval("alice", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
 }
@@ -174,10 +149,10 @@ test_fake_merge_message_self_approval_fails if {
 # No associated PR
 # ---------------------------------------------------------------------------
 
-# Scenario 5 — Commit pushed directly to main — no PR
+# Scenario 5 — commit with no PRs → violation
 test_no_pr_fails if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	v := violations with input as make_input([make_trail(c, [])])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "no associated PR")
 }
@@ -186,172 +161,131 @@ test_no_pr_fails if {
 # PR approval
 # ---------------------------------------------------------------------------
 
-# Scenario 1 — Standard PR with independent approval after latest commit → PASS
+# Scenario 1 — independent approval after latest commit → PASS
 test_independent_approval_after_commit_passes if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr := make_pr(42, [pr_commit("abc1234")], [approval("bob", "2023-01-01T10:00:01Z")])
-	count(violations) == 0 with input as make_input([make_trail(c, [pr])])
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# Scenario 7 — Self-approval only → violation
+# Scenario 7 — self-approval only → violation
 test_self_approval_fails if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr := make_pr(42, [pr_commit("abc1234")], [approval("alice", "2023-01-01T10:00:01Z")])
-	v := violations with input as make_input([make_trail(c, [pr])])
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("alice", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
 }
 
-# Scenario 8 — New code pushed after approval → violation
+# Scenario 8 — new code pushed after approval → violation
 test_approval_before_latest_commit_fails if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	late_commit := object.union(pr_commit("abc1234"), {"date": "2023-01-01T11:00:00Z"})
-	pr := make_pr(42, [pr_commit("sha_early"), late_commit], [approval("bob", "2023-01-01T10:30:00Z")])
-	v := violations with input as make_input([make_trail(c, [pr])])
+	late_commit := {"sha1": "sha_late", "author_username": "alice", "timestamp": 1000010}
+	pr := make_pr("abc1234", "alice",
+		[pr_commit("sha_early", "alice"), late_commit],
+		[approval("bob", 1000005)], # approved at 1000005 but late commit is at 1000010
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
 }
 
 # Scenario 6 — PR exists but has no approvals → violation
 test_no_approvals_fails if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr := make_pr(42, [pr_commit("abc1234")], [])
-	v := violations with input as make_input([make_trail(c, [pr])])
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
-}
-
-# ---------------------------------------------------------------------------
-# Post-approval merge-from-base
-# ---------------------------------------------------------------------------
-
-# Scenario 9 — Post-approval merge-from-base (ignore mode): merge-from-base at 11:00,
-# approval at 10:00, code commit at 09:00 — merge-from-base excluded from timing → PASS
-test_merge_from_base_after_approval_ignored if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	code_commit := pr_commit("sha_code") # date: 09:00
-	merge_commit := {
-		"sha": "sha_merge",
-		"parent_shas": ["sha_code", "external_sha"], # one parent outside the PR
-		"author": {"login": "alice"},
-		"date": "2023-01-01T11:00:00Z",
-		"message": "Merge branch 'main' into feature",
-	}
-	pr := make_pr(42, [code_commit, merge_commit], [approval("bob", "2023-01-01T10:00:00Z")])
-	count(violations) == 0
-		with input as make_input([make_trail(c, [pr])])
-		with post_approval_merge_commits as "ignore"
-}
-
-# Scenario 10 — Post-approval merge-from-base (strict mode): same setup → FAIL
-test_merge_from_base_after_approval_strict_fails if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	code_commit := pr_commit("sha_code")
-	merge_commit := {
-		"sha": "sha_merge",
-		"parent_shas": ["sha_code", "external_sha"],
-		"author": {"login": "alice"},
-		"date": "2023-01-01T11:00:00Z",
-		"message": "Merge branch 'main' into feature",
-	}
-	pr := make_pr(42, [code_commit, merge_commit], [approval("bob", "2023-01-01T10:00:00Z")])
-	v := violations
-		with input as make_input([make_trail(c, [pr])])
-		with post_approval_merge_commits as "strict"
-	some msg in v
-	contains(msg, "independent approval")
-}
-
-# Scenario 9 (edge case) — Every PR commit is a merge-from-base: fallback uses all,
-# approval at 12:00 is after latest commit at 11:00 → PASS
-test_all_commits_merge_from_base_fallback_uses_all if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	merge_only := {
-		"sha": "sha_merge",
-		"parent_shas": ["external_sha1", "external_sha2"],
-		"author": {"login": "alice"},
-		"date": "2023-01-01T11:00:00Z",
-		"message": "Merge branch 'main' into feature",
-	}
-	pr := make_pr(42, [merge_only], [approval("bob", "2023-01-01T12:00:00Z")])
-	count(violations) == 0
-		with input as make_input([make_trail(c, [pr])])
-		with post_approval_merge_commits as "ignore"
 }
 
 # ---------------------------------------------------------------------------
 # Multi-author PRs
 # ---------------------------------------------------------------------------
 
-# Scenario 13 — Multi-author PR: each author approved by the other → PASS
+# Scenario 13 — multi-author PR: sami and faye both commit, each approved by the other → PASS
 test_multi_author_cross_approval_passes if {
-	c := commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"])
-	pr := make_pr(42,
-		[pr_commit_by("sha_sami", "sami"), pr_commit_by("sha_faye", "faye")],
-		[approval("faye", "2023-01-01T10:00:01Z"), approval("sami", "2023-01-01T10:00:02Z")],
+	pr := make_pr("abc1234", "sami",
+		[pr_commit("sha_sami", "sami"), pr_commit("sha_faye", "faye")],
+		[approval("faye", 1000001), approval("sami", 1000002)],
 	)
-	count(violations) == 0 with input as make_input([make_trail(c, [pr])])
+	trail := make_trail("abc1234", "sami <sami@example.com>", [pr])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# Scenario 14 — Multi-author PR: faye approves but sami (co-author) does not approve faye → FAIL
+# Scenario 14 — faye approves but sami (co-author) still needs approval → violation
 test_multi_author_only_one_committer_approves_fails if {
-	c := commit("abc1234", "sami", "feat: collab feature", ["src/app.ts"])
-	pr := make_pr(42,
-		[pr_commit_by("sha_sami", "sami"), pr_commit_by("sha_faye", "faye")],
-		[approval("faye", "2023-01-01T10:00:01Z")],
+	pr := make_pr("abc1234", "sami",
+		[pr_commit("sha_sami", "sami"), pr_commit("sha_faye", "faye")],
+		[approval("faye", 1000001)], # faye approves but nobody approves faye's work
 	)
-	v := violations with input as make_input([make_trail(c, [pr])])
+	trail := make_trail("abc1234", "sami <sami@example.com>", [pr])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
 }
 
 # ---------------------------------------------------------------------------
-# Null login / unresolvable identity
+# Null author_username / unresolvable identity
 # ---------------------------------------------------------------------------
 
-# Null login — PR commit author has no linked GitHub account → "identity unverifiable" violation
-test_null_login_pr_commit_unverifiable if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr := make_pr(42,
-		[pr_commit_no_github("sha1", "John Doe", "john@company.com")],
-		[approval("bob", "2023-01-01T10:00:01Z")],
+# PR commit author_username is null → "identity unverifiable" violation
+test_null_username_pr_commit_unverifiable if {
+	pr := make_pr("abc1234", "alice",
+		[pr_commit_null_user("sha1")],
+		[approval("bob", 1000001)],
 	)
-	v := violations with input as make_input([make_trail(c, [pr])])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "identity unverifiable")
-	contains(msg, "john@company.com")
 }
 
-# Null login — both commit and PR commit authors unresolvable: must not vacuously pass
-test_all_null_logins_no_vacuous_pass if {
-	c := {
-		"sha": "abc1234",
-		"parent_shas": ["parent1"],
-		"author": {"git_name": "John Doe", "git_email": "john@company.com", "login": null},
-		"date": "2023-01-01T10:00:00Z",
-		"message": "feat: add feature",
-		"changed_files": ["src/app.ts"],
-	}
-	pr := make_pr(42,
-		[pr_commit_no_github("sha1", "John Doe", "john@company.com")],
-		[approval("bob", "2023-01-01T10:00:01Z")],
+# Null username service account PR commit: service account trail → no identity violation
+test_null_username_service_account_trail_exempt if {
+	pr := make_pr("abc1234", "alice",
+		[pr_commit_null_user("sha1")],
+		[approval("bob", 1000001)],
 	)
-	v := violations with input as make_input([make_trail(c, [pr])])
-	some msg in v
-	contains(msg, "independent approval")
-}
-
-# Null login — PR commit matches service-account pattern by git_name → no identity violation
-test_null_login_service_account_pr_commit_exempt if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr := make_pr(42,
-		[pr_commit_no_github("sha1", "svc_bot", "svc@company.com")],
-		[approval("bob", "2023-01-01T10:00:01Z")],
-	)
-	v := violations with input as make_input([make_trail(c, [pr])])
+	trail := make_trail("abc1234", "svc_deployer <svc@kosli.com>", [pr])
+	v := violations with input as make_input([trail])
 	every msg in v {
 		not contains(msg, "identity unverifiable")
 	}
+}
+
+# All null author_usernames must not vacuously pass — identity violation fires
+test_all_null_usernames_no_vacuous_pass if {
+	pr := make_pr("abc1234", "alice",
+		[pr_commit_null_user("sha1"), pr_commit_null_user("sha2")],
+		[approval("bob", 1000001)],
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "identity unverifiable")
+}
+
+# Absent author_username field (as sent by Kosli when identity unresolvable) → "identity unverifiable"
+test_absent_username_pr_commit_unverifiable if {
+	pr := make_pr("abc1234", "alice",
+		[pr_commit_no_user("sha1")],
+		[approval("bob", 1000001)],
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "identity unverifiable")
+}
+
+# GitHub web-flow / Copilot co-author commit: author="GitHub <noreply@github.com>", no author_username → exempt
+test_web_flow_pr_commit_exempt if {
+	pr := make_pr("abc1234", "alice",
+		[pr_commit("sha_alice", "alice"), pr_commit_web_flow("sha_copilot")],
+		[approval("bob", 1000001)],
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	count(violations) == 0 with input as make_input([trail])
 }
 
 # ---------------------------------------------------------------------------
@@ -360,17 +294,17 @@ test_null_login_service_account_pr_commit_exempt if {
 
 # Multi-PR — first PR has no approval, second does → PASS
 test_second_pr_approval_satisfies_check if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr_none := make_pr(41, [pr_commit("abc1234")], [])
-	pr_approved := make_pr(42, [pr_commit("abc1234")], [approval("bob", "2023-01-01T10:00:01Z")])
-	count(violations) == 0 with input as make_input([make_trail(c, [pr_none, pr_approved])])
+	pr_none := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [])
+	pr_approved := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr_none, pr_approved])
+	count(violations) == 0 with input as make_input([trail])
 }
 
-# Multi-PR — neither PR has approval → FAIL
+# Multi-PR — neither PR has approval → violation
 test_no_pr_with_approval_fails if {
-	c := commit("abc1234", "alice", "feat: add feature", ["src/app.ts"])
-	pr_none := make_pr(41, [pr_commit("abc1234")], [])
-	v := violations with input as make_input([make_trail(c, [pr_none, pr_none])])
+	pr_none := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr_none, pr_none])
+	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
 }
@@ -379,15 +313,12 @@ test_no_pr_with_approval_fails if {
 # Multiple commits across trails — only failing ones reported
 # ---------------------------------------------------------------------------
 
-# Scenario 11 — Service account trail passes, regular commit without PR fails;
+# Scenario 11 — service account passes, regular commit without PR fails;
 # exactly one violation referencing the failing SHA
 test_only_failing_commits_reported if {
-	passing_commit := commit("aaa1111", "svc_bot", "automated", ["src/app.ts"])
-	failing_commit := commit("bbb2222", "alice", "feat: add feature", ["src/app.ts"])
-	v := violations with input as make_input([
-		make_trail(passing_commit, []),
-		make_trail(failing_commit, []),
-	])
+	passing := make_trail("aaa1111", "svc_bot <svc@kosli.com>", [])
+	failing := make_trail("bbb2222", "alice <alice@example.com>", [])
+	v := violations with input as make_input([passing, failing])
 	count(v) == 1
 	some msg in v
 	contains(msg, "bbb2222")
