@@ -45,6 +45,14 @@ pr_commit_web_flow(sha) := {
 # approval: an approver entry
 approval(username, ts) := {"username": username, "timestamp": ts, "state": "APPROVED"}
 
+approval_dismissed(username, ts) := {"username": username, "timestamp": ts, "state": "DISMISSED"}
+
+approval_changes_requested(username, ts) := {"username": username, "timestamp": ts, "state": "CHANGES_REQUESTED"}
+
+approval_null_username(ts) := {"username": null, "timestamp": ts, "state": "APPROVED"}
+
+approval_no_username(ts) := {"timestamp": ts, "state": "APPROVED"}
+
 # make_pr builds a PR object.
 # merge_sha: SHA that equals trail.name when this is a merge commit trail.
 # pr_author: GitHub username of the PR creator.
@@ -151,6 +159,15 @@ test_non_merge_commit_self_approval_fails if {
 
 # Scenario 5 — commit with no PRs → violation
 test_no_pr_fails if {
+	trail := make_trail("abc1234", "alice <alice@example.com>", [])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "no associated PR")
+}
+
+# Scenario 4 — commit message resembles a GitHub merge commit but no PR exists in attestation data.
+# Merge-commit detection is purely data-driven (pr.merge_commit == trail.name), so the message is irrelevant.
+test_fake_merge_message_no_pr_fails if {
 	trail := make_trail("abc1234", "alice <alice@example.com>", [])
 	v := violations with input as make_input([trail])
 	some msg in v
@@ -322,4 +339,105 @@ test_only_failing_commits_reported if {
 	count(v) == 1
 	some msg in v
 	contains(msg, "bbb2222")
+}
+
+# Scenario 15 — direct commit and a properly approved PR merge commit in the same release range.
+# Only the direct commit produces a violation.
+# SHAs are exactly 7 chars: violation messages use substring(trail.name, 0, 7).
+test_direct_commit_and_pr_in_range_one_violation if {
+	direct := make_trail("dc20001", "alice <alice@example.com>", [])
+	pr := make_pr("mr62001", "alice",
+		[pr_commit("sha_c3", "alice"), pr_commit("sha_c4", "alice")],
+		[approval("bob", 1000001)])
+	merged := make_trail("mr62001", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([direct, merged])
+	count(v) == 1
+	some msg in v
+	contains(msg, "dc20001")
+}
+
+# ---------------------------------------------------------------------------
+# Multiple PRs in release range
+# ---------------------------------------------------------------------------
+
+# Scenario 16 — two merge commits, each backed by a PR with an independent approver → PASS
+test_two_prs_both_approved_passes if {
+	pr_a := make_pr("mr63001", "sami",
+		[pr_commit("sha_c2", "sami")],
+		[approval("faye", 1000001)])
+	pr_b := make_pr("mr64001", "faye",
+		[pr_commit("sha_c3", "faye")],
+		[approval("sami", 1000001)])
+	trail_a := make_trail("mr63001", "sami <sami@example.com>", [pr_a])
+	trail_b := make_trail("mr64001", "faye <faye@example.com>", [pr_b])
+	count(violations) == 0 with input as make_input([trail_a, trail_b])
+}
+
+# Scenario 17 — two merge commits; first PR independently approved, second self-approved → one violation
+test_two_prs_one_self_approved_fails if {
+	pr_a := make_pr("mr65001", "sami",
+		[pr_commit("sha_c2", "sami")],
+		[approval("faye", 1000001)])
+	pr_b := make_pr("mr66001", "faye",
+		[pr_commit("sha_c3", "faye")],
+		[approval("faye", 1000001)])
+	trail_a := make_trail("mr65001", "sami <sami@example.com>", [pr_a])
+	trail_b := make_trail("mr66001", "faye <faye@example.com>", [pr_b])
+	v := violations with input as make_input([trail_a, trail_b])
+	count(v) == 1
+	some msg in v
+	contains(msg, "mr66001")
+}
+
+# ---------------------------------------------------------------------------
+# Approval state validation
+# ---------------------------------------------------------------------------
+
+# DISMISSED approval must not satisfy independent approval requirement
+test_dismissed_approval_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval_dismissed("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "independent approval")
+}
+
+# CHANGES_REQUESTED approval must not satisfy independent approval requirement
+test_changes_requested_approval_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval_changes_requested("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "independent approval")
+}
+
+# DISMISSED + APPROVED from independent reviewer: the APPROVED one still satisfies the check
+test_dismissed_plus_approved_passes if {
+	pr := make_pr("abc1234", "alice",
+		[pr_commit("sha1", "alice")],
+		[approval_dismissed("bob", 1000001), approval("carol", 1000002)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	count(violations) == 0 with input as make_input([trail])
+}
+
+# ---------------------------------------------------------------------------
+# Approver username validation
+# ---------------------------------------------------------------------------
+
+# Approval with explicit null username must not be counted as independent approval
+test_null_username_approver_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval_null_username(1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "independent approval")
+}
+
+# Approval with absent username field must not be counted as independent approval
+test_absent_username_approver_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval_no_username(1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	v := violations with input as make_input([trail])
+	some msg in v
+	contains(msg, "independent approval")
 }

@@ -50,6 +50,8 @@ has_independent_approval(trail, pr) if {
 	count(all_authors) > 0
 	every author in all_authors {
 		some approver in pr.approvers
+		approver.state == "APPROVED"
+		is_string(approver.username)
 		approver.username != author
 		approver.timestamp > cutoff
 	}
@@ -64,6 +66,8 @@ has_independent_approval(trail, pr) if {
 	count(all_authors) > 0
 	every author in all_authors {
 		some approver in pr.approvers
+		approver.state == "APPROVED"
+		is_string(approver.username)
 		approver.username != author
 		approver.timestamp > cutoff
 	}

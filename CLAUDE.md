@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install          # Install dependencies
 npm run build        # Compile TypeScript → dist/
 npm test             # Run Jest unit tests
-ndocker run --rm -v "$(pwd)":/work openpolicyagent/opa test /work/four-eyes.rego /work/four-eyes_test.rego -v    # Run Rego policy tests (requires Docker)
+docker run --rm -v "$(pwd)":/work openpolicyagent/opa test /work/four-eyes.rego /work/four-eyes_test.rego -v    # Run Rego policy tests (requires Docker)
 ```
 
 Run a single Jest test file:
@@ -77,11 +77,9 @@ Three rules evaluated per commit in priority order (first match wins):
 2. **No PR** — no merged PR found for commit → FAIL
 3. **Independent approval** — PR must have at least one approval from someone other than the commit author, and that approval must come after the last code-change commit in the PR → PASS or FAIL
 
-`post_approval_merge_commits` constant controls how merge-from-base commits are treated: `"ignore"` (exempt from post-approval timestamp check) or `"strict"` (all commits must have approval after them).
+Merge commits are detected by `pr.merge_commit == trail.name`, not message text.
 
-Merge commits are detected by parent count (>1), not message text.
-
-The policy test file `four-eyes_test.rego` covers 17 scenarios; run with `npm run test:rego`.
+The policy test file `four-eyes_test.rego` covers the scenarios in `SCENARIOS.md`; run with `npm run test:rego`.
 
 ### Kosli attestation types
 
@@ -106,4 +104,4 @@ Copy `.env.example` to `.env` for local development.
 ## Key documentation
 
 - `CATALOGUE.md` — full control specification including data collection logic, exemption rules, limitations, schema reference, and regulatory mapping (NIST/ISO/DORA)
-- `SCENARIOS.md` — 17 named test scenarios with git diagrams and expected pass/fail outcomes; use these when adding Rego test cases
+- `SCENARIOS.md` — named test scenarios with git diagrams and expected pass/fail outcomes; use these when adding Rego test cases

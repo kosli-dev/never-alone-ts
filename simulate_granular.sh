@@ -43,6 +43,8 @@ if [[ ! -f "${SCRIPT_DIR}/dist/index.js" ]]; then
   npm --prefix "${SCRIPT_DIR}" run build
 fi
 
+"${SCRIPT_DIR}/setup-kosli-attestation-type.sh"
+
 # ── Create flow ───────────────────────────────────────────────────────────────
 echo "Creating Kosli flow: ${KOSLI_FLOW}..."
 kosli create flow "${KOSLI_FLOW}" \

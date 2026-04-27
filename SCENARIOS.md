@@ -158,52 +158,6 @@ gitGraph
 
 ---
 
-### 9. Post-approval merge-from-base (`ignore` mode)
-
-**Description:** A developer receives approval, then syncs their feature branch with `main` before merging (a `Merge branch 'main' into feature-x` commit). In `ignore` mode the merge-from-base commit is excluded from the timing check — the content it brings in was already reviewed on `main`. The approval still post-dates the actual code changes.
-
-**Result:** `PASS` — merge-from-base commits excluded; approval is after the latest code commit.
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/payments
-   commit id: "add payment flow"
-   checkout main
-   commit id: "hotfix: fix header"
-   checkout feature/payments
-   merge main id: "Merge main → feature ★"
-   checkout main
-   merge feature/payments id: "Merge PR #45" tag: "v1.1.0"
-```
-
-> `add payment flow` committed at 09:00. Alice approves at 10:00. `★` merge-from-base at 11:00 (excluded in `ignore` mode). PR merged at 11:05. → PASS
-
----
-
-### 10. Post-approval merge-from-base (`strict` mode)
-
-**Description:** Same as scenario 9, but the policy is set to `strict`. In strict mode every commit — including merge-from-base commits — must be preceded by a valid approval. Since the merge-from-base commit was pushed after the last approval, the check fails.
-
-**Result:** `FAIL` — merge-from-base commit post-dates the last approval (strict mode).
-
-```mermaid
-gitGraph
-   commit id: "..." tag: "v1.0.0"
-   branch feature/payments
-   commit id: "add payment flow"
-   checkout main
-   commit id: "hotfix: fix header"
-   checkout feature/payments
-   merge main id: "Merge main → feature ★" type: REVERSE
-   checkout main
-   merge feature/payments id: "Merge PR #52" type: REVERSE tag: "v1.1.0"
-```
-
-> `add payment flow` at 09:00. Alice approves at 10:00. `★` merge-from-base at 11:00. In `strict` mode the `★` commit invalidates the approval → FAIL. Switch to `post_approval_merge_commits := "ignore"` in `four-eyes.rego` to treat this as scenario 9 (PASS).
-
----
-
 ### 11. Multiple commits — only failing ones reported
 
 **Description:** A release range contains several commits. Some pass (e.g. authored by a service account) and some fail (e.g. pushed directly to main without a PR). The output only surfaces violations for the commits that actually fail; passing commits are not mentioned.
