@@ -7,7 +7,7 @@ import rego.v1
 # when all violations are resolved.
 default allow = false
 
-allow if count(violations) == 0
+allow if count(violation_reasons) == 0
 
 # ---------------------------------------------------------------------------
 # Attestation data
@@ -110,27 +110,31 @@ has_any_pr_approval(trail, attest) if {
 }
 
 # ---------------------------------------------------------------------------
-# Violations — iterate over all trails
+# Violation reasons — detection only, no sprintf
+#
+# allow is derived from this set. Keeping detection logic here (no sprintf)
+# means a formatting failure in the violations rules below cannot silently
+# empty this set and flip allow to true.
 # ---------------------------------------------------------------------------
 
 # Guard: if input.trails is absent or not an array, every other rule silently
-# skips iteration and violations stays empty, making allow=true. Fail closed instead.
-# object.get ensures the argument to is_array is always defined (avoids undefined-arg
-# propagation that would make `not is_array(undefined)` silently skip the rule).
-violations contains "Policy error: input.trails is missing or not an array — cannot evaluate" if {
+# skips iteration and violation_reasons stays empty, making allow=true. Fail
+# closed instead. object.get ensures the argument to is_array is always defined
+# (avoids undefined-arg propagation that would make `not is_array(undefined)`
+# silently skip the rule).
+violation_reasons contains "missing_trails_input" if {
 	trails := object.get(input, "trails", null)
 	not is_array(trails)
 }
 
 # Missing attestation: no PR review data collected for this commit.
-violations contains msg if {
+violation_reasons contains {"type": "missing_attestation", "trail": trail.name} if {
 	some trail in input.trails
 	not trail.compliance_status.attestations_statuses["pr-review"]
-	msg := sprintf("Trail %v: pr-review attestation is missing", [trail.name])
 }
 
 # Unverifiable identity: commit author has no resolvable GitHub account and is not a known service account.
-violations contains msg if {
+violation_reasons contains {"type": "unverifiable_identity", "pr_url": pr.url, "sha": c.sha1} if {
 	some trail in input.trails
 	attest := pr_attest(trail)
 	some pr in attest.pull_requests
@@ -138,33 +142,62 @@ violations contains msg if {
 	object.get(c, "author_username", null) == null
 	not is_service_account(trail)
 	not is_web_flow_commit(c)
-	msg := sprintf(
-		"PR %v: commit %v has no linked GitHub account — identity unverifiable",
-		[pr.url, substring(c.sha1, 0, 7)],
-	)
 }
 
 # Missing PR: commit has no associated merged pull request (non-service-account commits must come through a PR).
-violations contains msg if {
+violation_reasons contains {"type": "missing_pr", "trail": trail.name} if {
 	some trail in input.trails
 	not is_service_account(trail)
 	attest := pr_attest(trail)
 	count(attest.pull_requests) == 0
-	msg := sprintf(
-		"Commit %v: no associated PR found",
-		[substring(trail.name, 0, 7)],
-	)
 }
 
 # Missing approval: commit has an associated PR but no independent approval from someone other than the authors.
-violations contains msg if {
+violation_reasons contains {"type": "missing_approval", "trail": trail.name} if {
 	some trail in input.trails
 	not is_service_account(trail)
 	attest := pr_attest(trail)
 	count(attest.pull_requests) > 0
 	not has_any_pr_approval(trail, attest)
+}
+
+# ---------------------------------------------------------------------------
+# Violations — message formatting only
+#
+# allow does NOT depend on this set. A sprintf failure here cannot affect
+# the compliance decision; it only affects the human-readable output.
+# ---------------------------------------------------------------------------
+
+violations contains "Policy error: input.trails is missing or not an array — cannot evaluate" if {
+	"missing_trails_input" in violation_reasons
+}
+
+violations contains msg if {
+	some r in violation_reasons
+	r.type == "missing_attestation"
+	msg := sprintf("Trail %v: pr-review attestation is missing", [r.trail])
+}
+
+violations contains msg if {
+	some r in violation_reasons
+	r.type == "unverifiable_identity"
+	msg := sprintf(
+		"PR %v: commit %v has no linked GitHub account — identity unverifiable",
+		[r.pr_url, substring(r.sha, 0, 7)],
+	)
+}
+
+violations contains msg if {
+	some r in violation_reasons
+	r.type == "missing_pr"
+	msg := sprintf("Commit %v: no associated PR found", [substring(r.trail, 0, 7)])
+}
+
+violations contains msg if {
+	some r in violation_reasons
+	r.type == "missing_approval"
 	msg := sprintf(
 		"Commit %v: no independent approval after latest code commit",
-		[substring(trail.name, 0, 7)],
+		[substring(r.trail, 0, 7)],
 	)
 }
