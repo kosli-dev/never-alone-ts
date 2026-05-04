@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { KosliTrail } from './types';
+import { KosliTrail } from './types.js';
 
 const PAGE_LIMIT = 100;
 

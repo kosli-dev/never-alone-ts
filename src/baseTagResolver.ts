@@ -1,5 +1,5 @@
-import { KosliClient } from './kosli';
-import { getCommitHistory, getInitialCommit } from './git';
+import { KosliClient } from './kosli.js';
+import { getCommitHistory, getInitialCommit } from './git.js';
 
 export async function resolveBaseTag(
   flow: string,

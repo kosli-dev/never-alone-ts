@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { spawn } from 'child_process';
 import pLimit from 'p-limit';
-import { loadConfig } from './config';
-import { getCommits } from './git';
-import { resolveBaseTag } from './baseTagResolver';
+import { loadConfig } from './config.js';
+import { getCommits } from './git.js';
+import { resolveBaseTag } from './baseTagResolver.js';
 
 function parsePathArg(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
