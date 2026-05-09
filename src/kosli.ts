@@ -5,9 +5,12 @@ import { Config } from './config.js';
 const PAGE_LIMIT = 100;
 
 export class KosliClient {
-  private run(args: string[]): Promise<void> {
+  private run(args: string[], env?: Record<string, string>): Promise<void> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('kosli', args, { stdio: 'inherit' });
+      const proc = spawn('kosli', args, {
+        stdio: 'inherit',
+        env: { ...process.env, ...env },
+      });
       proc.on('close', code => {
         if (code === 0) resolve();
         else reject(new Error(`kosli ${args.slice(0, 2).join(' ')} exited with code ${code}`));
@@ -29,14 +32,13 @@ export class KosliClient {
     await this.run([
       'attest', 'pullrequest', 'github',
       '--name', config.kosliAttestationName,
-      '--github-token', config.githubToken,
       '--github-org', githubOrg,
       '--commit', sha,
       '--repo-root', repoPath,
       '--repository', config.githubRepository,
       '--flow', config.kosliFlow,
       '--trail', sha,
-    ]);
+    ], { GITHUB_TOKEN: config.githubToken });
   }
 
   async listTrailsWithAttestationName(flow: string, attestationName: string): Promise<Set<string>> {
