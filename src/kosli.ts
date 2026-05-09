@@ -1,4 +1,4 @@
-import { execSync, spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { KosliTrail } from './types.js';
 import { Config } from './config.js';
 
@@ -44,10 +44,14 @@ export class KosliClient {
     let page = 1;
 
     while (true) {
-      const output = execSync(
-        `kosli list trails --flow ${flow} --page ${page} --page-limit ${PAGE_LIMIT} -o json`,
+      const proc = spawnSync(
+        'kosli',
+        ['list', 'trails', '--flow', flow, '--page', String(page), '--page-limit', String(PAGE_LIMIT), '-o', 'json'],
         { encoding: 'utf8' },
       );
+      if (proc.error) throw proc.error;
+      if (proc.status !== 0) throw new Error(`kosli list trails exited with code ${proc.status}\n${proc.stderr}`);
+      const output = proc.stdout;
 
       const response = JSON.parse(output);
       const trails: KosliTrail[] = response.data || [];
