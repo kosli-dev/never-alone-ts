@@ -1,18 +1,16 @@
 import { jest, describe, it, expect, beforeEach, afterAll } from '@jest/globals';
+import { config as dotenvConfig } from 'dotenv';
+import { loadConfig } from '../src/config';
 
-const mockDotenvConfig = jest.fn();
-
-(jest as any).unstable_mockModule('dotenv', () => ({
-  config: mockDotenvConfig,
-}));
-
-const { loadConfig } = await import('../src/config.js');
+jest.mock('dotenv');
+const mockedDotenvConfig = dotenvConfig as jest.Mock;
 
 describe('loadConfig', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     process.env = { ...originalEnv };
+    mockedDotenvConfig.mockClear();
   });
 
   afterAll(() => {
