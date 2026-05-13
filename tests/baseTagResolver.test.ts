@@ -1,36 +1,32 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { KosliClient } from '../src/kosli';
+import { getCommitHistory, getInitialCommit } from '../src/git';
+import { resolveBaseTag } from '../src/baseTagResolver';
 
-const mockListTrails = jest.fn();
-const MockKosliClient = jest.fn();
-const mockGetCommitHistory = jest.fn();
-const mockGetInitialCommit = jest.fn();
+jest.mock('../src/kosli');
+jest.mock('../src/git');
 
-(jest as any).unstable_mockModule('../src/kosli.js', () => ({
-  KosliClient: MockKosliClient,
-}));
-(jest as any).unstable_mockModule('../src/git.js', () => ({
-  getCommitHistory: mockGetCommitHistory,
-  getInitialCommit: mockGetInitialCommit,
-}));
-
-const { resolveBaseTag } = await import('../src/baseTagResolver.js');
+const MockKosliClient = jest.mocked(KosliClient);
+const mockGetCommitHistory = jest.mocked(getCommitHistory);
+const mockGetInitialCommit = jest.mocked(getInitialCommit);
 
 const SHA_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const SHA_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const SHA_C = 'cccccccccccccccccccccccccccccccccccccccc';
 const SHA_INITIAL = '0000000000000000000000000000000000000000';
 
+const mockListTrails = jest.fn<() => Promise<Set<string>>>();
+
 describe('resolveBaseTag', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     MockKosliClient.mockImplementation(() => ({
       listTrailsWithAttestationName: mockListTrails,
-    }));
+    } as any));
     mockGetInitialCommit.mockReturnValue(SHA_INITIAL);
   });
 
   it('should return the commit SHA when a matching commit is found', async () => {
-    // History: SHA_A (current) → SHA_B (has attestation) → SHA_C
     mockGetCommitHistory.mockReturnValue([SHA_A, SHA_B, SHA_C]);
     mockListTrails.mockResolvedValue(new Set([SHA_B]));
 
@@ -49,7 +45,6 @@ describe('resolveBaseTag', () => {
   });
 
   it('should skip the first commit in history (currentTag itself)', async () => {
-    // SHA_A is currentTag — even though it has an attestation it must be skipped
     mockGetCommitHistory.mockReturnValue([SHA_A, SHA_B]);
     mockListTrails.mockResolvedValue(new Set([SHA_A, SHA_B]));
 
@@ -59,7 +54,6 @@ describe('resolveBaseTag', () => {
   });
 
   it('should return the closest (most recent) matching commit', async () => {
-    // Both SHA_B and SHA_C qualify — SHA_B is closer
     mockGetCommitHistory.mockReturnValue([SHA_A, SHA_B, SHA_C]);
     mockListTrails.mockResolvedValue(new Set([SHA_B, SHA_C]));
 
