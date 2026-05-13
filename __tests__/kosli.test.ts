@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { KosliClient } from '../src/kosli';
 
 jest.mock('child_process');
-const mockedExecSync = execSync as jest.Mock;
+const mockExecSync = jest.mocked(execSync);
 
 type KosliClientType = InstanceType<typeof KosliClient>;
 
@@ -22,12 +22,12 @@ describe('KosliClient', () => {
   let client: KosliClientType;
 
   beforeEach(() => {
-    mockedExecSync.mockClear();
+    jest.resetAllMocks();
     client = new KosliClient();
   });
 
   it('should return SHAs of trails that have the target attestation', async () => {
-    mockedExecSync.mockReturnValue(makeResponse([
+    mockExecSync.mockReturnValue(makeResponse([
       mockTrail('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ['scr-data', 'lint']),
       mockTrail('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ['lint']),
     ]));
@@ -40,7 +40,7 @@ describe('KosliClient', () => {
   });
 
   it('should skip trails with null git_commit_info', async () => {
-    mockedExecSync.mockReturnValue(JSON.stringify({
+    mockExecSync.mockReturnValue(JSON.stringify({
       data: [{ name: 'abc', git_commit_info: null, compliance_status: { attestations_statuses: [{ attestation_name: 'scr-data' }] } }],
     }));
 
@@ -55,28 +55,28 @@ describe('KosliClient', () => {
     );
     const page2 = [mockTrail('cccccccccccccccccccccccccccccccccccccccc', ['scr-data'])];
 
-    mockedExecSync
+    mockExecSync
       .mockReturnValueOnce(makeResponse(page1))
       .mockReturnValueOnce(makeResponse(page2));
 
     const result = await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
     expect(result.size).toBe(101);
-    expect(mockedExecSync).toHaveBeenCalledTimes(2);
+    expect(mockExecSync).toHaveBeenCalledTimes(2);
   });
 
   it('should stop paginating when page returns fewer than 100 results', async () => {
-    mockedExecSync.mockReturnValue(makeResponse([
+    mockExecSync.mockReturnValue(makeResponse([
       mockTrail('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ['scr-data']),
     ]));
 
     await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
-    expect(mockedExecSync).toHaveBeenCalledTimes(1);
+    expect(mockExecSync).toHaveBeenCalledTimes(1);
   });
 
   it('should return empty set when no trails match', async () => {
-    mockedExecSync.mockReturnValue(makeResponse([]));
+    mockExecSync.mockReturnValue(makeResponse([]));
 
     const result = await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 

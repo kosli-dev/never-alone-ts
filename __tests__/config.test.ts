@@ -3,14 +3,14 @@ import { config as dotenvConfig } from 'dotenv';
 import { loadConfig } from '../src/config';
 
 jest.mock('dotenv');
-const mockedDotenvConfig = dotenvConfig as jest.Mock;
+const mockDotenvConfig = jest.mocked(dotenvConfig);
 
 describe('loadConfig', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
     process.env = { ...originalEnv };
-    mockedDotenvConfig.mockClear();
+    mockDotenvConfig.mockClear();
   });
 
   afterAll(() => {

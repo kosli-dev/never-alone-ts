@@ -1,9 +1,44 @@
-import { execSync } from 'child_process';
-import { KosliTrail } from './types';
+import { execSync, spawn } from 'child_process';
+import { KosliTrail } from './types.js';
+import { Config } from './config.js';
 
 const PAGE_LIMIT = 100;
 
 export class KosliClient {
+  private run(args: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const proc = spawn('kosli', args, { stdio: 'inherit' });
+      proc.on('close', code => {
+        if (code === 0) resolve();
+        else reject(new Error(`kosli ${args.slice(0, 2).join(' ')} exited with code ${code}`));
+      });
+      proc.on('error', reject);
+    });
+  }
+
+  async attestCommit(sha: string, config: Config, repoPath: string): Promise<void> {
+    const githubOrg = config.githubRepository.split('/')[0];
+
+    await this.run([
+      'begin', 'trail', sha,
+      '--flow', config.kosliFlow,
+      '--commit', sha,
+      '--repo-root', repoPath,
+    ]);
+
+    await this.run([
+      'attest', 'pullrequest', 'github',
+      '--name', config.kosliAttestationName,
+      '--github-token', config.githubToken,
+      '--github-org', githubOrg,
+      '--commit', sha,
+      '--repo-root', repoPath,
+      '--repository', config.githubRepository,
+      '--flow', config.kosliFlow,
+      '--trail', sha,
+    ]);
+  }
+
   async listTrailsWithAttestationName(flow: string, attestationName: string): Promise<Set<string>> {
     const result = new Set<string>();
     let page = 1;

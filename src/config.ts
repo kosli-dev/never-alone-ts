@@ -1,4 +1,4 @@
-import * as dotenv from 'dotenv';
+import { config as dotenvConfig } from 'dotenv';
 
 export interface Config {
   baseTag: string;
@@ -10,7 +10,7 @@ export interface Config {
 }
 
 export function loadConfig(options: { envFile?: string } = {}): Config {
-  dotenv.config(options.envFile ? { path: options.envFile } : {});
+  dotenvConfig(options.envFile ? { path: options.envFile } : {});
 
   const required: Record<string, string | undefined> = {
     CURRENT_TAG: process.env.CURRENT_TAG,
