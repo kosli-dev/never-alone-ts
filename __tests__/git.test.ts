@@ -1,9 +1,12 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { execSync } from 'child_process';
-import { getCommits } from '../src/git';
 
-jest.mock('child_process');
-const mockedExecSync = execSync as jest.Mock;
+const mockedExecSync = jest.fn();
+
+(jest as any).unstable_mockModule('child_process', () => ({
+  execSync: mockedExecSync,
+}));
+
+const { getCommits } = await import('../src/git.js');
 
 describe('Git Interaction', () => {
   beforeEach(() => {

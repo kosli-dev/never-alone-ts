@@ -1,15 +1,18 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { KosliClient } from '../src/kosli';
-import { getCommitHistory, getInitialCommit } from '../src/git';
-import { resolveBaseTag } from '../src/baseTagResolver';
 
-jest.mock('../src/kosli');
-jest.mock('../src/git');
+const mockedGetCommitHistory = jest.fn();
+const mockedGetInitialCommit = jest.fn();
+const MockedKosliClient = jest.fn();
 
-const MockedKosliClient = KosliClient as jest.MockedClass<typeof KosliClient>;
-const mockedGetCommitHistory = getCommitHistory as jest.Mock;
-const mockedGetInitialCommit = getInitialCommit as jest.Mock;
+(jest as any).unstable_mockModule('../src/kosli.js', () => ({
+  KosliClient: MockedKosliClient,
+}));
+(jest as any).unstable_mockModule('../src/git.js', () => ({
+  getCommitHistory: mockedGetCommitHistory,
+  getInitialCommit: mockedGetInitialCommit,
+}));
 
+const { resolveBaseTag } = await import('../src/baseTagResolver.js');
 
 const SHA_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const SHA_B = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -24,12 +27,11 @@ describe('resolveBaseTag', () => {
   });
 
   it('should return the commit SHA when a matching commit is found', async () => {
-    // History: SHA_A (current) → SHA_B (has attestation) → SHA_C
     mockedGetCommitHistory.mockReturnValue([SHA_A, SHA_B, SHA_C]);
     const listTrailsMock = jest.fn<() => Promise<Set<string>>>().mockResolvedValue(new Set([SHA_B]));
     MockedKosliClient.mockImplementation(() => ({
       listTrailsWithAttestationName: listTrailsMock,
-    } as any));
+    }));
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
 
@@ -41,7 +43,7 @@ describe('resolveBaseTag', () => {
     const listTrailsMock = jest.fn<() => Promise<Set<string>>>().mockResolvedValue(new Set());
     MockedKosliClient.mockImplementation(() => ({
       listTrailsWithAttestationName: listTrailsMock,
-    } as any));
+    }));
     mockedGetInitialCommit.mockReturnValue(SHA_INITIAL);
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
@@ -50,12 +52,11 @@ describe('resolveBaseTag', () => {
   });
 
   it('should skip the first commit in history (currentTag itself)', async () => {
-    // SHA_A is currentTag — even though it has an attestation it must be skipped
     mockedGetCommitHistory.mockReturnValue([SHA_A, SHA_B]);
     const listTrailsMock = jest.fn<() => Promise<Set<string>>>().mockResolvedValue(new Set([SHA_A, SHA_B]));
     MockedKosliClient.mockImplementation(() => ({
       listTrailsWithAttestationName: listTrailsMock,
-    } as any));
+    }));
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
 
@@ -63,12 +64,11 @@ describe('resolveBaseTag', () => {
   });
 
   it('should return the closest (most recent) matching commit', async () => {
-    // Both SHA_B and SHA_C qualify — SHA_B is closer
     mockedGetCommitHistory.mockReturnValue([SHA_A, SHA_B, SHA_C]);
     const listTrailsMock = jest.fn<() => Promise<Set<string>>>().mockResolvedValue(new Set([SHA_B, SHA_C]));
     MockedKosliClient.mockImplementation(() => ({
       listTrailsWithAttestationName: listTrailsMock,
-    } as any));
+    }));
 
     const result = await resolveBaseTag('my-flow', 'scr-data', 'v1.1.0', '/repo');
 

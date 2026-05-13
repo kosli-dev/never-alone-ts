@@ -1,9 +1,13 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { execSync } from 'child_process';
-import { KosliClient } from '../src/kosli';
 
-jest.mock('child_process');
-const mockedExecSync = execSync as jest.Mock;
+const mockedExecSync = jest.fn();
+
+(jest as any).unstable_mockModule('child_process', () => ({
+  execSync: mockedExecSync,
+  spawn: jest.fn(),
+}));
+
+const { KosliClient } = await import('../src/kosli.js');
 
 type KosliClientType = InstanceType<typeof KosliClient>;
 
