@@ -30,6 +30,7 @@ export function loadConfig(options: { envFile?: string } = {}): Config {
     githubRepository: required.GITHUB_REPOSITORY!,
     githubToken: required.GITHUB_TOKEN!,
     kosliFlow: required.KOSLI_FLOW!,
+    // Must match the key used in four-eyes.rego: attestations_statuses["pr-review"]
     kosliAttestationName: process.env.KOSLI_ATTESTATION_NAME || 'pr-review',
   };
 }

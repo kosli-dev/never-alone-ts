@@ -20,6 +20,9 @@ allow if count(violation_reasons) == 0
 # ---------------------------------------------------------------------------
 
 # Extract PR attestation payload from a trail.
+# "pr-review" must match KOSLI_ATTESTATION_NAME (default "pr-review") passed to
+# `kosli attest pullrequest github --name`. Changing one without the other silently
+# fails every trail with a missing_attestation violation.
 pr_attest(trail) := trail.compliance_status.attestations_statuses["pr-review"]
 
 # ---------------------------------------------------------------------------
@@ -118,8 +121,8 @@ has_any_pr_approval(trail, attest) if {
 # ---------------------------------------------------------------------------
 
 # Guard: if input.trails is absent or not an array, every other rule silently
-# skips iteration and violation_reasons stays empty, making allow=true. Fail
-# closed instead. object.get ensures the argument to is_array is always defined
+# skips iteration and violation_reasons stays empty, making allow=true. 
+# object.get ensures the argument to is_array is always defined
 # (avoids undefined-arg propagation that would make `not is_array(undefined)`
 # silently skip the rule).
 violation_reasons contains "missing_trails_input" if {

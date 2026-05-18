@@ -1,13 +1,16 @@
-import { execSync, spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { KosliTrail } from './types.js';
 import { Config } from './config.js';
 
 const PAGE_LIMIT = 100;
 
 export class KosliClient {
-  private run(args: string[]): Promise<void> {
+  private run(args: string[], env?: Record<string, string>): Promise<void> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('kosli', args, { stdio: 'inherit' });
+      const proc = spawn('kosli', args, {
+        stdio: 'inherit',
+        env: { ...process.env, ...env },
+      });
       proc.on('close', code => {
         if (code === 0) resolve();
         else reject(new Error(`kosli ${args.slice(0, 2).join(' ')} exited with code ${code}`));
@@ -29,14 +32,13 @@ export class KosliClient {
     await this.run([
       'attest', 'pullrequest', 'github',
       '--name', config.kosliAttestationName,
-      '--github-token', config.githubToken,
       '--github-org', githubOrg,
       '--commit', sha,
       '--repo-root', repoPath,
       '--repository', config.githubRepository,
       '--flow', config.kosliFlow,
       '--trail', sha,
-    ]);
+    ], { GITHUB_TOKEN: config.githubToken });
   }
 
   async listTrailsWithAttestationName(flow: string, attestationName: string): Promise<Set<string>> {
@@ -44,10 +46,14 @@ export class KosliClient {
     let page = 1;
 
     while (true) {
-      const output = execSync(
-        `kosli list trails --flow ${flow} --page ${page} --page-limit ${PAGE_LIMIT} -o json`,
+      const proc = spawnSync(
+        'kosli',
+        ['list', 'trails', '--flow', flow, '--page', String(page), '--page-limit', String(PAGE_LIMIT), '-o', 'json'],
         { encoding: 'utf8' },
       );
+      if (proc.error) throw proc.error;
+      if (proc.status !== 0) throw new Error(`kosli list trails exited with code ${proc.status}\n${proc.stderr}`);
+      const output = proc.stdout;
 
       const response = JSON.parse(output);
       const trails: KosliTrail[] = response.data || [];
