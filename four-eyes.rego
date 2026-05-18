@@ -19,8 +19,11 @@ allow if count(violation_reasons) == 0
 # Attested via: kosli attest pullrequest github --name pr-review --commit <sha>
 # ---------------------------------------------------------------------------
 
-# Extract PR attestation payload from a trail.
-pr_attest(trail) := trail.compliance_status.attestations_statuses["pr-review"]
+# Extract PR attestation payload from a trail by type, not by name.
+pr_attest(trail) := attest if {
+	some _, attest in trail.compliance_status.attestations_statuses
+	attest.attestation_type == "pull_request"
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -118,8 +121,8 @@ has_any_pr_approval(trail, attest) if {
 # ---------------------------------------------------------------------------
 
 # Guard: if input.trails is absent or not an array, every other rule silently
-# skips iteration and violation_reasons stays empty, making allow=true. Fail
-# closed instead. object.get ensures the argument to is_array is always defined
+# skips iteration and violation_reasons stays empty, making allow=true. 
+# object.get ensures the argument to is_array is always defined
 # (avoids undefined-arg propagation that would make `not is_array(undefined)`
 # silently skip the rule).
 violation_reasons contains "missing_trails_input" if {
@@ -130,7 +133,7 @@ violation_reasons contains "missing_trails_input" if {
 # Missing attestation: no PR review data collected for this commit.
 violation_reasons contains {"type": "missing_attestation", "trail": trail.name} if {
 	some trail in input.trails
-	not trail.compliance_status.attestations_statuses["pr-review"]
+	not pr_attest(trail)
 }
 
 # Unverifiable identity: commit author has no resolvable GitHub account and is not a known service account.
@@ -175,7 +178,7 @@ violations contains "Policy error: input.trails is missing or not an array — c
 violations contains msg if {
 	some r in violation_reasons
 	r.type == "missing_attestation"
-	msg := sprintf("Trail %v: pr-review attestation is missing", [r.trail])
+	msg := sprintf("Trail %v: pull request attestation is missing", [r.trail])
 }
 
 violations contains msg if {

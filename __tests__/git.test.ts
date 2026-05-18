@@ -1,18 +1,18 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getCommits } from '../src/git';
 
 jest.mock('child_process');
-const mockExecSync = jest.mocked(execSync);
+const mockExecFileSync = jest.mocked(execFileSync);
 
 describe('Git Interaction', () => {
   beforeEach(() => {
-    mockExecSync.mockClear();
+    mockExecFileSync.mockClear();
   });
 
   it('should parse commits from git log output', () => {
     const mockOutput = 'sha1||p1||author1||email1||2023-01-01T00:00:00Z||msg1\nsha2||p2 p3||author2||email2||2023-01-02T00:00:00Z||msg2';
-    mockExecSync.mockReturnValue(mockOutput);
+    mockExecFileSync.mockReturnValue(mockOutput);
 
     const commits = getCommits('v1.0.0', 'v1.1.0');
 
@@ -27,7 +27,7 @@ describe('Git Interaction', () => {
   });
 
   it('should return empty list if git log is empty', () => {
-    mockExecSync.mockReturnValue('');
+    mockExecFileSync.mockReturnValue('');
     const commits = getCommits('v1.0.0', 'v1.1.0');
     expect(commits).toHaveLength(0);
   });
