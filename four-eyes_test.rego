@@ -11,7 +11,7 @@ import rego.v1
 make_trail(sha, author_str, prs) := {
 	"name": sha,
 	"git_commit_info": {"author": author_str, "sha1": sha, "timestamp": 1000100},
-	"compliance_status": {"attestations_statuses": {"pr-review": {"pull_requests": prs}}},
+	"compliance_status": {"attestations_statuses": {"pr-review": {"attestation_type": "pull_request", "pull_requests": prs}}},
 }
 
 make_input(trails) := {"trails": trails}
@@ -77,7 +77,7 @@ test_missing_attestation_fails if {
 		"compliance_status": {"attestations_statuses": {}},
 	}])
 	some msg in v
-	contains(msg, "pr-review attestation is missing")
+	contains(msg, "pull_request attestation is missing")
 }
 
 # ---------------------------------------------------------------------------
