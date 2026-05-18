@@ -38,7 +38,7 @@ export class KosliClient {
       '--repository', config.githubRepository,
       '--flow', config.kosliFlow,
       '--trail', sha,
-    ], { GITHUB_TOKEN: config.githubToken });
+    ], { KOSLI_GITHUB_TOKEN: config.githubToken });
   }
 
   async listTrailsWithAttestationName(flow: string, attestationName: string): Promise<Set<string>> {

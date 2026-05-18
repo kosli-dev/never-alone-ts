@@ -1,9 +1,9 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { KosliClient } from '../src/kosli';
 
 jest.mock('child_process');
-const mockExecSync = jest.mocked(execSync);
+const mockSpawnSync = jest.mocked(spawnSync);
 
 type KosliClientType = InstanceType<typeof KosliClient>;
 
@@ -27,10 +27,10 @@ describe('KosliClient', () => {
   });
 
   it('should return SHAs of trails that have the target attestation', async () => {
-    mockExecSync.mockReturnValue(makeResponse([
+    mockSpawnSync.mockReturnValue({ stdout: makeResponse([
       mockTrail('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ['scr-data', 'lint']),
       mockTrail('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ['lint']),
-    ]));
+    ]), stderr: '', status: 0, pid: 0, output: [], signal: null });
 
     const result = await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
@@ -40,9 +40,9 @@ describe('KosliClient', () => {
   });
 
   it('should skip trails with null git_commit_info', async () => {
-    mockExecSync.mockReturnValue(JSON.stringify({
+    mockSpawnSync.mockReturnValue({ stdout: JSON.stringify({
       data: [{ name: 'abc', git_commit_info: null, compliance_status: { attestations_statuses: [{ attestation_name: 'scr-data' }] } }],
-    }));
+    }), stderr: '', status: 0, pid: 0, output: [], signal: null });
 
     const result = await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
@@ -55,28 +55,28 @@ describe('KosliClient', () => {
     );
     const page2 = [mockTrail('cccccccccccccccccccccccccccccccccccccccc', ['scr-data'])];
 
-    mockExecSync
-      .mockReturnValueOnce(makeResponse(page1))
-      .mockReturnValueOnce(makeResponse(page2));
+    mockSpawnSync
+      .mockReturnValueOnce({ stdout: makeResponse(page1), stderr: '', status: 0, pid: 0, output: [], signal: null })
+      .mockReturnValueOnce({ stdout: makeResponse(page2), stderr: '', status: 0, pid: 0, output: [], signal: null });
 
     const result = await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
     expect(result.size).toBe(101);
-    expect(mockExecSync).toHaveBeenCalledTimes(2);
+    expect(mockSpawnSync).toHaveBeenCalledTimes(2);
   });
 
   it('should stop paginating when page returns fewer than 100 results', async () => {
-    mockExecSync.mockReturnValue(makeResponse([
+    mockSpawnSync.mockReturnValue({ stdout: makeResponse([
       mockTrail('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ['scr-data']),
-    ]));
+    ]), stderr: '', status: 0, pid: 0, output: [], signal: null });
 
     await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
-    expect(mockExecSync).toHaveBeenCalledTimes(1);
+    expect(mockSpawnSync).toHaveBeenCalledTimes(1);
   });
 
   it('should return empty set when no trails match', async () => {
-    mockExecSync.mockReturnValue(makeResponse([]));
+    mockSpawnSync.mockReturnValue({ stdout: makeResponse([]), stderr: '', status: 0, pid: 0, output: [], signal: null });
 
     const result = await client.listTrailsWithAttestationName('my-flow', 'scr-data');
 
