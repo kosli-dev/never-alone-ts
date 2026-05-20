@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { CommitInfo } from './types.js';
+import { CommitInfo } from './types';
 
 export function getCommits(baseTag: string, currentTag: string, repoPath: string = process.cwd()): CommitInfo[] {
   const range = baseTag ? `${baseTag}..${currentTag}` : currentTag;

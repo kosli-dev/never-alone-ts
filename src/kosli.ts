@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'child_process';
-import { KosliTrail } from './types.js';
-import { Config } from './config.js';
+import { KosliTrail } from './types';
+import { Config } from './config';
 
 const PAGE_LIMIT = 100;
 

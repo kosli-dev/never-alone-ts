@@ -55,6 +55,19 @@ npm install
 npm run build
 ```
 
+## Import style and build pipeline
+
+This project uses extensionless local imports in TypeScript source (for example `./kosli` instead of `./kosli.js`) to stay compatible with monorepo defaults.
+
+Because the package runs as ESM (`"type": "module"`), plain TypeScript emit can produce runtime resolution errors in Node for extensionless local imports. For that reason, `npm run build` uses webpack to bundle `src/index.ts` into `dist/index.js`.
+
+Use:
+
+```bash
+npm run build      # webpack bundle used for runtime
+npm run typecheck  # TypeScript type-check only
+```
+
 ## Configuration
 
 ### Environment variables
