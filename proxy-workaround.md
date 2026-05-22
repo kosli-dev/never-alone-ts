@@ -59,9 +59,9 @@ kosli attest pullrequest github \
     --trail < commit-sha > \  
     --commit < commit-sha > \ 
     --github-org < github-org > \ 
-    --repository < repo name >  \ 
+    --repository < repo-name >  \ 
     --flow < flow-name > \ 
-    --repo-root < relative path to repository > 
+    --repo-root < relative-path-to-repository > 
 ```
 
 Override proxy to our local
