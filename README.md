@@ -1,6 +1,6 @@
 # Source Code Review Verification Tool
 
-## Note! This tool is in alpha, and is therefore subject to extensive changes.
+## Note! This tool is in alpha, and is therefore subject to extensive changes
 
 This tool verifies adherence to the "four-eyes principle" for code changes within a specified release range. It is split into two parts:
 
@@ -9,7 +9,7 @@ This tool verifies adherence to the "four-eyes principle" for code changes withi
 
 ## How it works
 
-```
+```text
 node dist/index.js --repo /path/to/repo
   │
   ├─ for each commit in BASE_TAG..CURRENT_TAG (--first-parent):
@@ -113,6 +113,7 @@ To add an exemption, add a regex pattern to the set in `four-eyes.rego`.
 ### 1. Run the collector
 
 **With explicit base tag:**
+
 ```bash
 BASE_TAG=v1.0.0 CURRENT_TAG=v1.1.0 \
 GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=... \
