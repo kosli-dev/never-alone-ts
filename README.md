@@ -1,6 +1,6 @@
 # Source Code Review Verification Tool
 
-## Note! This tool is in alpha, and is therefore subject to extensive changes.
+## Note! This tool is in alpha, and is therefore subject to extensive changes
 
 This tool verifies adherence to the "four-eyes principle" for code changes within a specified release range. It is split into two parts:
 
@@ -9,7 +9,7 @@ This tool verifies adherence to the "four-eyes principle" for code changes withi
 
 ## How it works
 
-```
+```text
 node dist/index.js --repo /path/to/repo
   │
   ├─ for each commit in BASE_TAG..CURRENT_TAG (--first-parent):
@@ -32,7 +32,7 @@ Each commit trail is checked in order; the first matching rule determines its st
 
 1. **Service account** — the git commit author matches a service account pattern → PASS (no PR required)
 2. **No PR** — no merged PR found for the commit → FAIL
-3. **Independent approval** — the PR must have at least one approval from someone who did not author any PR commit, and that approval must come after the last code commit in the PR → PASS or FAIL
+3. **Independent approval** — for each PR code author, there must be at least one `APPROVED` review from a different user after the last code commit in the PR → PASS or FAIL
 
 Merge commits (where `pr.merge_commit == trail.name`) are treated the same as regular commits for the approval check, but the person who clicked Merge is not counted as a code author.
 
@@ -59,7 +59,7 @@ npm run build
 
 This project uses extensionless local imports in TypeScript source (for example `./kosli` instead of `./kosli.js`) to stay compatible with monorepo defaults.
 
-Because the package runs as ESM (`"type": "module"`), plain TypeScript emit can produce runtime resolution errors in Node for extensionless local imports. For that reason, `npm run build` uses webpack to bundle `src/index.ts` into `dist/index.js`.
+Because the package runs as ESM (`"type": "module"`), plain TypeScript emit can produce runtime resolution errors in Node for extensionless local imports. For that reason, `npm run build` uses webpack to bundle `src/main.ts` into `dist/index.js`.
 
 Use:
 
@@ -113,6 +113,7 @@ To add an exemption, add a regex pattern to the set in `four-eyes.rego`.
 ### 1. Run the collector
 
 **With explicit base tag:**
+
 ```bash
 BASE_TAG=v1.0.0 CURRENT_TAG=v1.1.0 \
 GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=... \
@@ -180,7 +181,7 @@ kosli evaluate trails SHA1 SHA2 \
 
 ### Policy tests
 
-The policy is tested with OPA's built-in test runner. 25 test cases cover the full scenario matrix:
+The policy is tested with OPA's built-in test runner. The test file currently contains 36 test cases that cover the scenario matrix:
 
 ```bash
 npm run test:rego   # requires OPA CLI (or: docker run --rm -v $(pwd):/w openpolicyagent/opa test /w/four-eyes.rego /w/four-eyes_test.rego -v)
@@ -208,10 +209,10 @@ npm run test:rego  # OPA policy tests (requires OPA CLI)
 
 | File | Role |
 | :--- | :--- |
-| `src/index.ts` | CLI entry point; walks the commit range; calls `kosli begin trail` and `kosli attest pullrequest github` per commit (p-limit 4 concurrent) |
+| `src/main.ts` | CLI entry point; walks the commit range; calls `kosli begin trail` and `kosli attest pullrequest github` per commit (p-limit 4 concurrent) |
 | `src/baseTagResolver.ts` | Walks git history backward from `currentTag`; queries Kosli trails to find the most-recently-attested SHA |
 | `src/kosli.ts` | Shells out to `kosli list trails --flow` and paginates results |
-| `src/git.ts` | `execSync` wrappers for git log |
+| `src/git.ts` | `execFileSync` wrappers for `git log` and `git rev-list` |
 | `src/config.ts` | Validates required env vars; loads `.env` via dotenv |
 | `four-eyes.rego` | Rego policy evaluating four-eyes compliance |
-| `four-eyes_test.rego` | OPA unit tests (25 scenarios) |
+| `four-eyes_test.rego` | OPA unit tests (36 scenarios) |
