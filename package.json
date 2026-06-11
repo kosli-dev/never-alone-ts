@@ -10,21 +10,28 @@
   "scripts": {
     "build": "webpack --config webpack.config.cjs",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "start": "node dist/index.js",
     "test": "jest",
     "test:rego": "opa test four-eyes.rego four-eyes_test.rego -v"
+  },
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
     "p-limit": "^7.3.0"
   },
   "devDependencies": {
+    "eslint": "9.34.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "jest": "^30.3.0",
+    "typescript-eslint": "8.41.0",
     "ts-jest": "^29.4.9",
     "ts-loader": "^9.5.7",
-    "typescript": "^6.0.3",
+    "typescript": "5.9.2",
     "webpack": "^5.107.0",
     "webpack-cli": "^7.0.2"
   },

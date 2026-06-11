@@ -3,7 +3,6 @@
   "compilerOptions": {
     "module": "CommonJS",
     "moduleResolution": "node10",
-    "ignoreDeprecations": "6.0",
     "rootDir": ".",
     "outDir": "./dist-test"
   },
