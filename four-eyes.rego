@@ -24,17 +24,14 @@ allow if {
 # Compliance — a trail is compliant if any of these positive conditions hold
 # ---------------------------------------------------------------------------
 
-# Service-account commits are exempt from PR review.
+# A commit is compliant when an associated PR in the evaluated repository has
+# independent approval, on the PR's final commit, covering every author. There
+# is no exemption based on the git author string: whoever writes the commit
+# sets it, so matching on it would let anyone skip review.
 trail_compliant(trail) if {
-	is_service_account(trail)
-}
-
-# Human-authored commits are compliant when an associated PR has independent
-# approval covering every author after the latest code commit.
-trail_compliant(trail) if {
-	not is_service_account(trail)
 	attest := pr_attest(trail)
 	some pr in attest.pull_requests
+	pr_in_repo(pr)
 	all_authors_resolved(pr)
 	has_independent_approval(trail, pr)
 }
@@ -55,34 +52,64 @@ pr_attest(trail) := attest if {
 	attest.attestation_type == "pull_request"
 }
 
+# The repository whose PRs count, as "owner/repo". Required: a PR elsewhere,
+# such as in a fork, is one whose approvers the author may choose.
+repository := lower(data.params.repository) if is_string(data.params.repository)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-# GitHub usernames of all PR branch commit authors whose identity was resolved.
-pr_commit_authors(pr) := {u |
-	some c in pr.commits
-	u := c.author_username
-	u != null
+# A username is resolved when it is a non-empty GitHub login. "ghost" is the
+# placeholder GitHub shows for deleted accounts, so it identifies no one.
+is_resolved_username(u) if {
+	is_string(u)
+	u != ""
+	u != "ghost"
 }
 
-# Latest Unix timestamp among PR branch commits.
-latest_commit_ts(pr) := max({c.timestamp | some c in pr.commits})
+# GitHub usernames of everyone who wrote PR branch commits: the named author,
+# and the signer, who is who actually made the commit.
+pr_commit_authors(pr) := {u |
+	some c in pr.commits
+	some u in [object.get(c, "author_username", null), object.get(c, "signer_username", null)]
+	is_resolved_username(u)
+}
 
-# Every commit on the PR has a resolvable author (or is a known service-account
-# style commit like web-flow / Copilot co-auth that we tolerate).
+# The approval was given on the PR's final commit. Commit dates are not used:
+# whoever writes a commit sets them.
+approved_on_head(approver, pr) if {
+	is_string(pr.head_sha)
+	pr.head_sha != ""
+	approver.commit_sha == pr.head_sha
+}
+
+# The PR URL is https://<host>/<owner>/<repo>/pull/<number>.
+pr_in_repo(pr) if {
+	parts := split(pr.url, "/")
+	count(parts) == 7
+	parts[5] == "pull"
+	lower(concat("/", [parts[3], parts[4]])) == repository
+}
+
+# Every commit on the PR has an author linked to a GitHub account and a
+# verified signature, by a known account or by GitHub. Without the signature
+# the author is only what the commit says, which its writer chooses.
 all_authors_resolved(pr) if {
 	every c in pr.commits {
-		author_resolved_or_exempt(c)
+		is_resolved_username(object.get(c, "author_username", null))
+		signed_by_known_identity(c)
 	}
 }
 
-author_resolved_or_exempt(c) if {
-	is_string(c.author_username)
+signed_by_known_identity(c) if {
+	c.verified == true
+	is_resolved_username(object.get(c, "signer_username", null))
 }
 
-author_resolved_or_exempt(c) if {
-	is_web_flow_commit(c)
+signed_by_known_identity(c) if {
+	c.verified == true
+	c.signed_by_github == true
 }
 
 # A commit is the merge commit when the PR's merge_commit field matches the
@@ -91,10 +118,9 @@ is_merge_commit(trail, pr) if {
 	trail.name == pr.merge_commit
 }
 
-# Regular commit: PR branch authors + PR author all need independent approval after last code commit.
+# Regular commit: PR branch authors + PR author all need independent approval on the final commit.
 has_independent_approval(trail, pr) if {
 	not is_merge_commit(trail, pr)
-	cutoff := latest_commit_ts(pr)
 	all_authors := pr_commit_authors(pr) | {pr.author}
 	count(all_authors) > 0
 
@@ -103,9 +129,9 @@ has_independent_approval(trail, pr) if {
 	every author in all_authors {
 		some approver in pr.approvers
 		approver.state == "APPROVED"
-		is_string(approver.username)
+		is_resolved_username(approver.username)
 		approver.username != author
-		approver.timestamp > cutoff
+		approved_on_head(approver, pr)
 	}
 }
 
@@ -113,7 +139,6 @@ has_independent_approval(trail, pr) if {
 # The merge button clicker did not write code and requires no separate review.
 has_independent_approval(trail, pr) if {
 	is_merge_commit(trail, pr)
-	cutoff := latest_commit_ts(pr)
 	all_authors := pr_commit_authors(pr)
 	count(all_authors) > 0
 
@@ -122,36 +147,10 @@ has_independent_approval(trail, pr) if {
 	every author in all_authors {
 		some approver in pr.approvers
 		approver.state == "APPROVED"
-		is_string(approver.username)
+		is_resolved_username(approver.username)
 		approver.username != author
-		approver.timestamp > cutoff
+		approved_on_head(approver, pr)
 	}
-}
-
-# ---------------------------------------------------------------------------
-# Service account exemption
-#
-# Matched against trail.git_commit_info.author, which is "Name <email>" format.
-# Patterns work against the full string, e.g.:
-#   "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
-# ---------------------------------------------------------------------------
-
-service_account_patterns := {
-	"svc_.*",
-	".*\\[bot\\]",
-	"noreply@github.com",
-}
-
-# Commit author is a service account (CI, GitHub Actions, dependabot, etc).
-is_service_account(trail) if {
-	some pattern in service_account_patterns
-	regex.match(pattern, trail.git_commit_info.author)
-}
-
-# PR commit author is unresolvable (web-flow edits, Copilot co-auth).
-is_web_flow_commit(c) if {
-	some pattern in service_account_patterns
-	regex.match(pattern, object.get(c, "author", ""))
 }
 
 # ---------------------------------------------------------------------------
@@ -171,6 +170,10 @@ violations contains "Policy error: input.trails is empty — nothing to evaluate
 	count(input.trails) == 0
 }
 
+violations contains "Policy error: data.params.repository is not set. Pass --params '{\"repository\": \"owner/repo\"}'" if {
+	not repository
+}
+
 # Missing attestation: no PR review data collected for this commit.
 violations contains msg if {
 	some trail in input.trails
@@ -179,28 +182,38 @@ violations contains msg if {
 	msg := sprintf("Trail %v: pull_request attestation is missing", [trail.name])
 }
 
-# Unverifiable identity: commit author has no resolvable GitHub account
-# and is not a known service account or web-flow commit.
+# Unverifiable identity: commit author has no resolvable GitHub account.
 violations contains msg if {
 	some trail in input.trails
 	not trail_compliant(trail)
 	attest := pr_attest(trail)
 	some pr in attest.pull_requests
 	some c in pr.commits
-	object.get(c, "author_username", null) == null
-	not is_service_account(trail)
-	not is_web_flow_commit(c)
+	not is_resolved_username(object.get(c, "author_username", null))
 	msg := sprintf(
 		"PR %v: commit %v has no linked GitHub account — identity unverifiable",
 		[pr.url, substring(c.sha1, 0, 7)],
 	)
 }
 
-# Missing PR: non-service-account commit has no associated merged PR.
+# Unverifiable signer: commit has no verified signature by a known account or GitHub.
 violations contains msg if {
 	some trail in input.trails
 	not trail_compliant(trail)
-	not is_service_account(trail)
+	attest := pr_attest(trail)
+	some pr in attest.pull_requests
+	some c in pr.commits
+	not signed_by_known_identity(c)
+	msg := sprintf(
+		"PR %v: commit %v has no verified signature. Who made it is unverifiable",
+		[pr.url, substring(c.sha1, 0, 7)],
+	)
+}
+
+# Missing PR: commit has no associated merged PR.
+violations contains msg if {
+	some trail in input.trails
+	not trail_compliant(trail)
 	attest := pr_attest(trail)
 	count(attest.pull_requests) == 0
 	msg := sprintf("Commit %v: no associated PR found", [substring(trail.name, 0, 7)])
@@ -211,13 +224,12 @@ violations contains msg if {
 violations contains msg if {
 	some trail in input.trails
 	not trail_compliant(trail)
-	not is_service_account(trail)
 	attest := pr_attest(trail)
 	count(attest.pull_requests) > 0
 	not any_pr_fully_approved(trail, attest)
 	msg := sprintf(
-		"Commit %v: no independent approval after latest code commit",
-		[substring(trail.name, 0, 7)],
+		"Commit %v: no PR in %v has an independent approval on its final commit",
+		[substring(trail.name, 0, 7), repository],
 	)
 }
 
@@ -226,6 +238,7 @@ violations contains msg if {
 # "unverifiable identity".
 any_pr_fully_approved(trail, attest) if {
 	some pr in attest.pull_requests
+	pr_in_repo(pr)
 	all_authors_resolved(pr)
 	has_independent_approval(trail, pr)
 }

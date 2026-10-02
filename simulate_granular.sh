@@ -101,6 +101,7 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
     COMMIT_EVAL_FILE="${SCRIPT_DIR}/commit_eval_${SHA}.json"
     kosli evaluate trails "${SHA}" \
       --policy "${SCRIPT_DIR}/four-eyes.rego" \
+      --params "{\"repository\": \"${GITHUB_REPOSITORY}\"}" \
       --flow "${KOSLI_FLOW}" \
       --show-input \
       --output json > "${COMMIT_EVAL_FILE}" 2>/dev/null || true
@@ -133,6 +134,7 @@ for (( i=1; i<${#TAGS[@]}; i++ )); do
   EVAL_FILE="${SCRIPT_DIR}/eval_result_${CURRENT_TAG}.json"
   kosli evaluate trails ${TRAIL_LIST} \
     --policy "${SCRIPT_DIR}/four-eyes.rego" \
+    --params "{\"repository\": \"${GITHUB_REPOSITORY}\"}" \
     --show-input \
     --flow "${KOSLI_FLOW}" \
     --output json > "${EVAL_FILE}" 2>/dev/null || true

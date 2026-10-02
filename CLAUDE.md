@@ -47,7 +47,7 @@ Collector (npm start)
 kosli attest custom --type scr-data --attestation-data att_data_<sha>.json
   → creates a Kosli trail per commit SHA
 
-kosli evaluate trails SHA1 SHA2 ... --policy four-eyes.rego
+kosli evaluate trails SHA1 SHA2 ... --policy four-eyes.rego --params '{"repository": "owner/repo"}'
   → OPA receives input.trails[] (one entry per commit)
   → returns allow (bool) + violations[] (strings)
 
@@ -71,11 +71,7 @@ kosli attest custom --type four-eyes-result
 
 ### Policy (`four-eyes.rego`)
 
-Three rules evaluated per commit in priority order (first match wins):
-
-1. **Service account exemption** — author login matches any pattern in `service_account_patterns` → PASS
-2. **No PR** — no merged PR found for commit → FAIL
-3. **Independent approval** — PR must have at least one approval from someone other than the commit author, and that approval must come after the last code-change commit in the PR → PASS or FAIL
+A commit passes when one of its PRs is in the repository given by `--params '{"repository": "owner/repo"}'`, has every commit author linked to a GitHub account and every commit carrying a verified signature (by a known account or GitHub), and has an approval from someone other than each author and signer given on the PR's final commit (`approvers[].commit_sha == head_sha`). No PR → FAIL. There is no author-name exemption, and commit dates are not used.
 
 Merge commits are detected by `pr.merge_commit == trail.name`, not message text.
 

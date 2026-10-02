@@ -10,9 +10,9 @@ Each scenario describes a commit pattern, the expected result, and why. The git 
 
 ### 1. Standard PR with independent approval
 
-**Description:** A developer opens a PR, a different developer reviews and approves it, then the PR is merged. The approval timestamp is after the latest commit in the PR. This is the happy path.
+**Description:** A developer opens a PR, a different developer reviews and approves it, then the PR is merged. The approval was given on the PR's final commit. This is the happy path.
 
-**Result:** `PASS` — PR has an independent approval after the latest code commit.
+**Result:** `PASS`: PR has an independent approval on its final commit.
 
 ```mermaid
 gitGraph
@@ -28,11 +28,11 @@ gitGraph
 
 ---
 
-### 2. Service account commit
+### 2. Bot or service-account commit without a PR
 
-**Description:** An automated process (CI bot, dependency updater, release script) pushes a commit. The author's name matches a pattern in `serviceAccounts` (e.g. `svc_.*`, `dependabot`). These commits are exempt from human review requirements.
+**Description:** An automated process (CI bot, dependency updater, release script) pushes a commit straight to `main`. Its author name looks like a bot (`dependabot[bot]`, `svc_deployer`). Whoever writes a commit sets its author name, so the name earns no exemption.
 
-**Result:** `PASS` — author matches a service account pattern.
+**Result:** `FAIL`: no associated PR. Route bot changes through a PR with a human approval.
 
 ```mermaid
 gitGraph
@@ -41,15 +41,15 @@ gitGraph
    commit id: "..." tag: "v1.1.0"
 ```
 
-> Commit authored by `dependabot[bot]` — matches `svc_.*` pattern. Evaluation stops here.
+> Commit authored by `dependabot[bot]`, pushed without a PR → FAIL.
 
 ---
 
 ### 3. GitHub merge commit — checked via PR
 
-**Description:** When GitHub merges a PR using the "Create a merge commit" strategy, it produces a commit on `main` with two parents (the previous `main` tip and the feature branch tip). The control identifies this as a merge commit by parent count and applies the PR approval check, using only the PR branch commit authors — not the login of whoever clicked the Merge button, since they were executing a merge rather than contributing code.
+**Description:** When GitHub merges a PR using the "Create a merge commit" strategy, it produces a commit on `main` with two parents (the previous `main` tip and the feature branch tip). The control identifies this as the merge commit because the PR's `merge_commit` equals the trail's SHA, and applies the PR approval check, using only the PR branch commit authors — not the login of whoever clicked the Merge button, since they were executing a merge rather than contributing code.
 
-**Result:** `PASS` — merge commit is linked to a PR that has an independent approval after the latest code commit.
+**Result:** `PASS`: merge commit is linked to a PR that has an independent approval on its final commit.
 
 ```mermaid
 gitGraph
@@ -66,7 +66,7 @@ gitGraph
 
 ### 4. Fake merge commit message — bypass attempt
 
-**Description:** A developer names a regular single-parent commit `"Merge pull request #42 from ..."` to trick the control into treating it as a merge commit and skipping the approval check. Because merge commit detection is based solely on parent count, not message text, the commit has only one parent and is correctly treated as a regular commit. It has no associated PR and fails.
+**Description:** A developer names a regular single-parent commit `"Merge pull request #42 from ..."` to trick the control into treating it as a merge commit and skipping the approval check. Because merge commit detection uses the PR's `merge_commit`, not message text, the commit is treated as a regular commit. It has no associated PR and fails.
 
 **Result:** `FAIL` — single-parent commit with a fabricated merge message is not a merge commit; no associated PR found.
 
@@ -138,9 +138,9 @@ gitGraph
 
 ### 8. New code pushed after approval
 
-**Description:** A reviewer approves the PR, but the developer then pushes additional commits after the approval. The approval predates the latest code commit, so the reviewer never saw the final state of the code.
+**Description:** A reviewer approves the PR, but the developer then pushes additional commits after the approval. The approval was given on an earlier commit, so the reviewer never saw the final state of the code. This holds whatever date the new commit carries: the policy compares commits, not dates.
 
-**Result:** `FAIL` — approval exists but predates the latest commit.
+**Result:** `FAIL`: approval exists but was not given on the PR's final commit.
 
 ```mermaid
 gitGraph
@@ -154,25 +154,25 @@ gitGraph
    merge feature/api id: "Merge PR #51" type: REVERSE tag: "v1.1.0"
 ```
 
-> Bob approves at 10:00. `★` pushed at 11:00. Approval is before the latest commit → FAIL.
+> Bob approves `add API endpoint`. `★` is pushed afterwards, so the PR's final commit has no approval → FAIL.
 
 ---
 
 ### 11. Multiple commits — only failing ones reported
 
-**Description:** A release range contains several commits. Some pass (e.g. authored by a service account) and some fail (e.g. pushed directly to main without a PR). The output only surfaces violations for the commits that actually fail; passing commits are not mentioned.
+**Description:** A release range contains several commits. Some pass (e.g. merged through an approved PR) and some fail (e.g. pushed directly to main without a PR). The output only surfaces violations for the commits that actually fail; passing commits are not mentioned.
 
 **Result:** `FAIL` for one commit; the other commit produces no violation. Only the failing SHA appears in the violations list.
 
 ```mermaid
 gitGraph
    commit id: "..." tag: "v1.0.0"
-   commit id: "chore: bump deps (svc_bot)" type: HIGHLIGHT
+   commit id: "fix: typo (approved PR)" type: HIGHLIGHT
    commit id: "feat: add feature (alice)" type: REVERSE
    commit id: "..." tag: "v1.1.0"
 ```
 
-> `chore: bump deps` authored by `svc_bot` — service account, passes. `feat: add feature` pushed directly by `alice` — no PR, fails. Only `feat: add feature`'s SHA appears in violations.
+> `fix: typo` came through an approved PR, passes. `feat: add feature` pushed directly by `alice` with no PR, fails. Only `feat: add feature`'s SHA appears in violations.
 
 ---
 

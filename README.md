@@ -18,7 +18,8 @@ node dist/index.js --repo /path/to/repo
   │
   └─ (Kosli stores PR data: commits, approvers, merge commit SHA)
 
-kosli evaluate trails SHA1 SHA2 ... --policy four-eyes.rego --flow <flow>
+kosli evaluate trails SHA1 SHA2 ... --policy four-eyes.rego --flow <flow> \
+    --params '{"repository": "owner/repo"}'
   │
   └─ OPA evaluates four-eyes.rego against input.trails[]
        → allow (bool) + violations[] (strings)
@@ -28,15 +29,21 @@ The collector's only job is trail creation and PR attestation. All evaluation lo
 
 ## Evaluation rules
 
-Each commit trail is checked in order; the first matching rule determines its status:
+A commit trail passes when one of its PRs meets all of these:
 
-1. **Service account** — the git commit author matches a service account pattern → PASS (no PR required)
-2. **No PR** — no merged PR found for the commit → FAIL
-3. **Independent approval** — for each PR code author, there must be at least one `APPROVED` review from a different user after the last code commit in the PR → PASS or FAIL
+1. **In this repository**: the PR's URL is in the repository passed as `--params '{"repository": "owner/repo"}'`. A PR anywhere else, such as a fork, doesn't count. Without the param, every trail fails.
+2. **Every commit identified**: each PR commit has an author linked to a GitHub account (`author_username`) and a verified signature, either by a known account (`signer_username`) or by GitHub (`signed_by_github`, for web edits and merges). The author fields are whatever the commit's writer put there, so the signer is what shows who made it. The signer needs an independent approval too.
+3. **Independent approval on the final commit**: for each PR code author and signer, at least one `APPROVED` review from a different user, given on the PR's final commit. The policy compares the commit each review was given on with the PR's head commit. Commit dates aren't used, because whoever writes a commit sets them.
+
+A commit with no PR fails. There is no exemption by author name: bot and service-account commits need a PR with a human approval like any other. A bot commit GitHub links to the bot's account (e.g. `dependabot[bot]`) counts as identified; one with no linked account, such as a `GitHub <noreply@github.com>` co-author entry, doesn't.
 
 Merge commits (where `pr.merge_commit == trail.name`) are treated the same as regular commits for the approval check, but the person who clicked Merge is not counted as a code author.
 
-PR commits authored by `GitHub <noreply@github.com>` (GitHub web-flow and Copilot co-authored commits) are exempt from the identity verification check.
+Unsigned commits fail, so this suits repositories that require signed commits.
+
+Anything that adds a commit after approval needs a new approval, including **Update branch**, a rebase, a conflict fix in the web editor and an applied review suggestion. A reviewer who applies their own suggestion also becomes a commit's author, so someone else has to approve.
+
+This needs a Kosli CLI that records each review's commit (`approvers[].commit_sha`), the PR's head commit (`head_sha`) and each commit's signer (`signer_username`, `signed_by_github`). That CLI also lists as approvers only each reviewer's latest review, from people with write access, and only approvals by user accounts. Attestations made with an older CLI lack these fields, so no approval counts; re-attest with a current CLI.
 
 For named test cases with git diagrams and expected outcomes, see [SCENARIOS.md](SCENARIOS.md).
 
@@ -81,26 +88,6 @@ npm run typecheck  # TypeScript type-check only
 | `BASE_TAG` | No | Starting git tag or SHA. If omitted, auto-resolved from Kosli (last attested commit in the flow). Falls back to the repository's first commit. |
 | `KOSLI_ATTESTATION_NAME` | No | Attestation name for the PR data. Defaults to `pr-review`. |
 
-### Service account exemptions
-
-Service accounts are defined as a Rego set in `four-eyes.rego`. Patterns are matched against `trail.git_commit_info.author` (the `"Name <email>"` string from git) and also against `c.author` for individual PR commits:
-
-```rego
-service_account_patterns := {
-    "svc_.*",
-    ".*\\[bot\\]",
-    "noreply@github.com",
-}
-```
-
-| Pattern | Matches |
-| :--- | :--- |
-| `svc_.*` | Any author whose name starts with `svc_` |
-| `.*\[bot\]` | GitHub App bots: `dependabot[bot]`, `github-actions[bot]`, `ci-signed-commit-bot[bot]`, etc. |
-| `noreply@github.com` | GitHub web-flow commits and Copilot co-authored commit entries |
-
-To add an exemption, add a regex pattern to the set in `four-eyes.rego`.
-
 ## Usage
 
 ### CLI flags
@@ -132,13 +119,14 @@ node dist/index.js --repo /path/to/repo
 
 When `BASE_TAG` is not set, the tool queries Kosli for the most recent commit in the git history that already has a `pr-review` attestation in the flow, and uses that as the base. If none is found it falls back to the repository's first commit.
 
-This creates one Kosli trail per commit in the range and attaches `pr-review` PR data to each trail (commits, approvers, merge commit SHA, timestamps).
+This creates one Kosli trail per commit in the range and attaches `pr-review` PR data to each trail (commits, approvers and the commit each approval was given on, head and merge commit SHAs).
 
 ### 2. Evaluate
 
 ```bash
 kosli evaluate trails SHA1 SHA2 SHA3 \
   --policy four-eyes.rego \
+  --params '{"repository": "owner/repo"}' \
   --flow my-flow \
   --output json > eval-result.json
 ```
@@ -159,11 +147,7 @@ kosli attest custom \
 
 ## Policy: `four-eyes.rego`
 
-The policy evaluates `input.trails[]` — one entry per commit. PR data is at:
-
-```rego
-input.trails[i].compliance_status.attestations_statuses["pr-review"]
-```
+The policy evaluates `input.trails[]` — one entry per commit. PR data is the attestation in `input.trails[i].compliance_status.attestations_statuses` whose `attestation_type` is `pull_request`, whatever its name.
 
 Attested via: `kosli attest pullrequest github --name pr-review --commit <sha>`.
 
@@ -174,6 +158,7 @@ Use `--show-input` to inspect the exact data structure passed to the policy:
 ```bash
 kosli evaluate trails SHA1 SHA2 \
   --policy four-eyes.rego \
+  --params '{"repository": "owner/repo"}' \
   --show-input \
   --flow my-flow \
   --output json
@@ -181,7 +166,7 @@ kosli evaluate trails SHA1 SHA2 \
 
 ### Policy tests
 
-The policy is tested with OPA's built-in test runner. The test file currently contains 36 test cases that cover the scenario matrix:
+The policy is tested with OPA's built-in test runner. The test file covers the scenario matrix:
 
 ```bash
 npm run test:rego   # requires OPA CLI (or: docker run --rm -v $(pwd):/w openpolicyagent/opa test /w/four-eyes.rego /w/four-eyes_test.rego -v)
