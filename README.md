@@ -32,7 +32,7 @@ The collector's only job is trail creation and PR attestation. All evaluation lo
 A commit trail passes when one of its PRs meets all of these:
 
 1. **In this repository**: the PR's URL is in the repository passed as `--params '{"repository": "owner/repo"}'`. A PR anywhere else, such as a fork, doesn't count. Without the param, every trail fails.
-2. **Every commit identified**: each PR commit has an author linked to a GitHub account (`author_username`) and a verified signature, either by a known account (`signer_username`) or by GitHub (`signed_by_github`, for web edits and merges). The author fields are whatever the commit's writer put there, so the signer is what shows who made it. The signer needs an independent approval too.
+2. **Every commit identified**: each PR commit has an author linked to a GitHub account (`author_username`) and a verified signature, either by a known account (`signer_username`) or by GitHub (`signed_by_platform`, for web edits and merges). The author fields are whatever the commit's writer put there, so the signer is what shows who made it. The signer needs an independent approval too.
 3. **Independent approval on the final commit**: for each PR code author and signer, at least one `APPROVED` review from a different user, given on the PR's final commit. The policy compares the commit each review was given on with the PR's head commit. Commit dates aren't used, because whoever writes a commit sets them.
 
 A commit with no PR fails. There is no exemption by author name: bot and service-account commits need a PR with a human approval like any other. A bot commit GitHub links to the bot's account (e.g. `dependabot[bot]`) counts as identified; one with no linked account, such as a `GitHub <noreply@github.com>` co-author entry, doesn't.
@@ -43,7 +43,7 @@ Unsigned commits fail, so this suits repositories that require signed commits.
 
 Anything that adds a commit after approval needs a new approval, including **Update branch**, a rebase, a conflict fix in the web editor and an applied review suggestion. A reviewer who applies their own suggestion also becomes a commit's author, so someone else has to approve.
 
-This needs a Kosli CLI that records each review's commit (`approvers[].commit_sha`), the PR's head commit (`head_sha`) and each commit's signer (`signer_username`, `signed_by_github`). That CLI also lists as approvers only each reviewer's latest review, from people with write access, and only approvals by user accounts. Attestations made with an older CLI lack these fields, so no approval counts; re-attest with a current CLI.
+This needs a Kosli CLI that records each review's commit (`approvers[].commit_sha`), the PR's head commit (`head_sha`) and each commit's signer (`signer_username`, `signed_by_platform`). That CLI also lists as approvers only each reviewer's latest review, from people with write access, and only approvals by user accounts. Attestations made with an older CLI lack these fields, so no approval counts; re-attest with a current CLI.
 
 For named test cases with git diagrams and expected outcomes, see [SCENARIOS.md](SCENARIOS.md).
 

@@ -32,7 +32,7 @@ signed_commit(sha, author, signer) := {
 	"timestamp": 1000000,
 	"verified": true,
 	"signer_username": signer,
-	"signed_by_github": false,
+	"signed_by_platform": false,
 }
 
 pr_commit_null_user(sha) := {
@@ -592,7 +592,7 @@ test_empty_commit_author_blocks_approval if {
 # Who made a commit comes from its signature
 # ---------------------------------------------------------------------------
 
-unsigned(c) := object.remove(c, ["verified", "signer_username", "signed_by_github"])
+unsigned(c) := object.remove(c, ["verified", "signer_username", "signed_by_platform"])
 
 test_unsigned_commit_blocks_approval if {
 	not allowed([make_pr("abc1234", "alice", [unsigned(pr_commit("sha1", "alice"))], [approval("bob", 1000001)])])
@@ -610,9 +610,9 @@ test_ghost_signer_blocks_approval if {
 	not allowed([make_pr("abc1234", "alice", [signed_commit("sha1", "alice", "ghost")], [approval("bob", 1000001)])])
 }
 
-github_signed(c) := object.union(object.remove(c, ["signer_username"]), {"signed_by_github": true})
+github_signed(c) := object.union(object.remove(c, ["signer_username"]), {"signed_by_platform": true})
 
-test_commit_signed_by_github_passes if {
+test_commit_signed_by_platform_passes if {
 	allowed([make_pr("abc1234", "alice", [github_signed(pr_commit("sha1", "alice"))], [approval("bob", 1000001)])])
 }
 

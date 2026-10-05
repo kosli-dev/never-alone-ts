@@ -81,7 +81,7 @@ Kosli's `attest pullrequest github` fetches PR data from the GitHub API and stor
           "timestamp": 1770191490,
           "verified": true,
           "signer_username": "alice",
-          "signed_by_github": false
+          "signed_by_platform": false
         }
       ],
       "approvers": [
@@ -211,7 +211,7 @@ See [`SCENARIOS.md`](SCENARIOS.md) for the full set of named test cases with dia
 - **Author identity requires a linked GitHub account**: if a PR branch commit's `author_username` cannot be resolved by Kosli (absent field), it is flagged as "identity unverifiable". Ensure the GitHub token has sufficient scope.
 - **Merge-from-base commits count as code commits**: a `Merge branch 'main' into feature-x` commit pushed after an approval becomes the PR's final commit. The approver must re-approve after such a sync commit.
 - **Signed commits required**: an unsigned PR commit fails. GitHub signs commits it makes itself (web edits, merges, suggestions); for those, the named author is trusted. Not verified: whether GitHub's commit API signs a commit whose author the caller chose.
-- **Needs a current Kosli CLI**: the attestation must record `head_sha`, `approvers[].commit_sha` and each commit's `verified`, `signer_username` and `signed_by_github`. That CLI lists as approvers only each reviewer's latest review, from people with write access, and only user accounts. Attestations made with an older CLI have neither and get no approval; re-attest.
+- **Needs a current Kosli CLI**: the attestation must record `head_sha`, `approvers[].commit_sha` and each commit's `verified`, `signer_username` and `signed_by_platform`. That CLI lists as approvers only each reviewer's latest review, from people with write access, and only user accounts. Attestations made with an older CLI have neither and get no approval; re-attest.
 - **No enforcement at merge time**: this control is evaluated at release time, not at the moment a PR is merged. A violation means the release must be blocked or remediated; it does not prevent the offending merge from happening.
 
 ---
@@ -267,7 +267,7 @@ The `pr-review` attestation is a built-in Kosli `pull_request` type populated by
 | `pull_requests[].approvers[].username` | `string` | GitHub username of the reviewer |
 | `pull_requests[].commits[].verified` | `bool \| absent` | `true` if GitHub verified the commit's signature |
 | `pull_requests[].commits[].signer_username` | `string \| absent` | GitHub account behind the signing key |
-| `pull_requests[].commits[].signed_by_github` | `bool \| absent` | `true` if GitHub made the signature |
+| `pull_requests[].commits[].signed_by_platform` | `bool \| absent` | `true` if the hosting platform (here GitHub) made the signature with its own key |
 | `pull_requests[].approvers[].commit_sha` | `string \| absent` | SHA of the commit the review was given on |
 
 The trail-level `git_commit_info.author` field (set by `kosli begin trail --commit <sha>`) carries the git `author` field of the merge commit as `"Name <email>"`. The policy does not use it.
