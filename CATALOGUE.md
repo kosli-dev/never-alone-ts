@@ -84,12 +84,14 @@ Kosli's `attest pullrequest github` fetches PR data from the GitHub API and stor
           "signed_by_platform": false
         }
       ],
-      "approvers": [
+      "reviews": [
         {
           "username": "bob",
           "timestamp": 1770191600,
           "state": "APPROVED",
-          "commit_sha": "<40-char sha the review was given on>"
+          "commit_sha": "<40-char sha the review was given on>",
+          "author_type": "user",
+          "has_write_access": true
         }
       ]
     }
@@ -124,7 +126,8 @@ Step 4 detail: "independent approval on the final commit":
 - **Author set** for merge commits: the GitHub usernames of PR branch commit authors (`pr.commits[].author_username`) and signers (`pr.commits[].signer_username`). The author fields are set by whoever writes the commit; the signer of a verified signature is the account holding the key. The identity of whoever clicked Merge is excluded.
 - **Author set** for non-merge commits: PR branch commit authors and signers plus `pr.author` (the PR creator).
 - **Independent**: every username in the author set must have at least one approval from a *different* username.
-- **On the final commit**: every such approval must satisfy `approver.commit_sha == pr.head_sha`, the commit the review was given on against the PR's head commit. Commit dates are not used: whoever writes a commit sets them. A PR or approval without these fields gets no approval.
+- **Who can approve**: a review counts as an approval only if its state is `APPROVED`, its author is a person (`author_type` `user`) with write access (`has_write_access`), and the same reviewer has no request for changes or dismissal at the same time or later. Review times are set by GitHub.
+- **On the final commit**: every such approval must satisfy `review.commit_sha == pr.head_sha`, the commit the review was given on against the PR's head commit. Commit dates are not used: whoever writes a commit sets them. A PR or approval without these fields gets no approval.
 - **Repository**: a PR counts only if its URL is `https://<host>/<owner>/<repo>/pull/<n>` with `<owner>/<repo>` equal to `data.params.repository`, compared case-insensitively. An associated PR elsewhere, such as a fork, doesn't count.
 - **Multiple PRs**: if a commit has multiple associated PRs, any single PR with a passing approval is sufficient.
 
@@ -207,12 +210,12 @@ See [`SCENARIOS.md`](SCENARIOS.md) for the full set of named test cases with dia
 ## Limitations
 
 - **GitHub-only**: PR and approval data is fetched exclusively from the GitHub API via the Kosli CLI. Approvals recorded in external systems (Jira, email, Slack) are invisible to this control.
-- **Approval dismissal not tracked**: if a review approval was later dismissed, the Kosli `pr-review` attestation captures a snapshot at attestation time. Requiring the approval to be on the PR's final commit is the primary safeguard against stale approvals.
+- **Evidence is a snapshot**: the attestation records the reviews as they were when it ran. A dismissal or request for changes in the attestation withdraws the approval, but one made afterwards isn't seen until the commit is attested again.
 - **Author identity requires a linked GitHub account**: if a PR branch commit's `author_username` cannot be resolved by Kosli (absent field), it is flagged as "identity unverifiable". Ensure the GitHub token has sufficient scope.
 - **Merge-from-base commits count as code commits**: a `Merge branch 'main' into feature-x` commit pushed after an approval becomes the PR's final commit. The approver must re-approve after such a sync commit.
 - **Signed commits required**: an unsigned PR commit fails. GitHub signs commits it makes itself (web edits, merges, and commits a workflow makes through the git-data API or `createCommitOnBranch` without setting an author); for those, the named author is trusted. An API commit whose author the caller sets is left unsigned (tested with a user token and a workflow token), so it fails.
 - **Bot commits name the bot, not the person behind it**: a commit made by a workflow is authored by its bot account (`github-actions[bot]`), so the policy requires an approval from someone other than the bot. It can't tell who started the workflow, so that person's own approval still counts. Accepted, because bots and agents contribute more and more.
-- **Needs a current Kosli CLI**: the attestation must record `head_sha`, `approvers[].commit_sha` and each commit's `verified`, `signer_username` and `signed_by_platform`. That CLI lists as approvers only each reviewer's latest review, from people with write access, and only user accounts. Attestations made with an older CLI have neither and get no approval; re-attest.
+- **Needs a current Kosli CLI**: the attestation must record `head_sha`, `reviews` and each commit's `verified`, `signer_username` and `signed_by_platform`. Attestations made with an older CLI lack them and get no approval; re-attest.
 - **No enforcement at merge time**: this control is evaluated at release time, not at the moment a PR is merged. A violation means the release must be blocked or remediated; it does not prevent the offending merge from happening.
 
 ---
@@ -265,10 +268,14 @@ The `pr-review` attestation is a built-in Kosli `pull_request` type populated by
 | `pull_requests[].commits[].sha1` | `string` | Full SHA of the PR branch commit |
 | `pull_requests[].commits[].author` | `string` | `"Name <email>"` of the git commit author |
 | `pull_requests[].commits[].author_username` | `string \| absent` | GitHub username; absent when the identity cannot be resolved |
-| `pull_requests[].approvers[].username` | `string` | GitHub username of the reviewer |
+| `pull_requests[].reviews[].username` | `string` | GitHub username of the reviewer |
+| `pull_requests[].reviews[].state` | `string` | `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED` or `DISMISSED` |
+| `pull_requests[].reviews[].timestamp` | `number` | Unix epoch seconds when the review was submitted, set by GitHub |
+| `pull_requests[].reviews[].author_type` | `string` | `user`, `bot` or `other` |
+| `pull_requests[].reviews[].has_write_access` | `bool` | Whether the reviewer can push to the repository, as GitHub reports it when the attestation runs (not when the review was given) |
 | `pull_requests[].commits[].verified` | `bool \| absent` | `true` if GitHub verified the commit's signature |
 | `pull_requests[].commits[].signer_username` | `string \| absent` | GitHub account behind the signing key |
 | `pull_requests[].commits[].signed_by_platform` | `bool \| absent` | `true` if the hosting platform (here GitHub) made the signature with its own key |
-| `pull_requests[].approvers[].commit_sha` | `string \| absent` | SHA of the commit the review was given on |
+| `pull_requests[].reviews[].commit_sha` | `string \| absent` | SHA of the commit the review was given on |
 
 The trail-level `git_commit_info.author` field (set by `kosli begin trail --commit <sha>`) carries the git `author` field of the merge commit as `"Name <email>"`. The policy does not use it.

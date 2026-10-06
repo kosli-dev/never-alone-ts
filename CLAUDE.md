@@ -71,7 +71,7 @@ kosli attest custom --type four-eyes-result
 
 ### Policy (`four-eyes.rego`)
 
-A commit passes when one of its PRs is in the repository given by `--params '{"repository": "owner/repo"}'`, has every commit author linked to a GitHub account and every commit carrying a verified signature (by a known account or GitHub), and has an approval from someone other than each author and signer given on the PR's final commit (`approvers[].commit_sha == head_sha`). No PR → FAIL. There is no author-name exemption, and commit dates are not used.
+A commit passes when one of its PRs is in the repository given by `--params '{"repository": "owner/repo"}'`, has every commit author linked to a GitHub account and every commit carrying a verified signature (by a known account or GitHub), and has an approval from a person with write access, other than each author and signer, given on the PR's final commit (`reviews[].commit_sha == head_sha`) and not withdrawn by a later request for changes or dismissal. No PR → FAIL. There is no author-name exemption, and commit dates are not used.
 
 Merge commits are detected by `pr.merge_commit == trail.name`, not message text.
 

@@ -68,8 +68,7 @@ is_resolved_username(u) if {
 	u != "ghost"
 }
 
-# GitHub usernames of everyone who wrote PR branch commits: the named author,
-# and the signer, who is who actually made the commit.
+# GitHub usernames on PR branch commits: each named author and signing account.
 pr_commit_authors(pr) := {u |
 	some c in pr.commits
 	some u in [object.get(c, "author_username", null), object.get(c, "signer_username", null)]
@@ -82,6 +81,33 @@ approved_on_head(approver, pr) if {
 	is_string(pr.head_sha)
 	pr.head_sha != ""
 	approver.commit_sha == pr.head_sha
+}
+
+# Approvals that count: by a person with write access, on the PR's final commit,
+# and not withdrawn. Review times are set by GitHub.
+counting_approvals(pr) := {a |
+	some a in pr.reviews
+	a.state == "APPROVED"
+	a.author_type == "user"
+	a.has_write_access == true
+	is_resolved_username(a.username)
+	is_number(a.timestamp)
+	approved_on_head(a, pr)
+	not withdrawn(a, pr)
+}
+
+# The same reviewer requested changes or had a review dismissed at the same
+# time or later. A review with no usable time counts as later.
+withdrawn(approval, pr) if {
+	some r in pr.reviews
+	r.username == approval.username
+	r.state in {"CHANGES_REQUESTED", "DISMISSED"}
+	not earlier(r, approval)
+}
+
+earlier(r, approval) if {
+	is_number(r.timestamp)
+	r.timestamp < approval.timestamp
 }
 
 # The PR URL is https://<host>/<owner>/<repo>/pull/<number>.
@@ -125,13 +151,10 @@ has_independent_approval(trail, pr) if {
 	count(all_authors) > 0
 
 	# At least one approver must exist to satisfy four-eyes.
-	count(pr.approvers) > 0
+	count(counting_approvals(pr)) > 0
 	every author in all_authors {
-		some approver in pr.approvers
-		approver.state == "APPROVED"
-		is_resolved_username(approver.username)
+		some approver in counting_approvals(pr)
 		approver.username != author
-		approved_on_head(approver, pr)
 	}
 }
 
@@ -143,13 +166,10 @@ has_independent_approval(trail, pr) if {
 	count(all_authors) > 0
 
 	# At least one approver must exist to satisfy four-eyes.
-	count(pr.approvers) > 0
+	count(counting_approvals(pr)) > 0
 	every author in all_authors {
-		some approver in pr.approvers
-		approver.state == "APPROVED"
-		is_resolved_username(approver.username)
+		some approver in counting_approvals(pr)
 		approver.username != author
-		approved_on_head(approver, pr)
 	}
 }
 

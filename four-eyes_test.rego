@@ -54,10 +54,13 @@ pr_commit_web_flow(sha) := {
 	"timestamp": 1000000,
 }
 
-# approval: an approver entry, given on the PR's final commit
+# approval: a review approving the PR's final commit, by a person with write access
 approval(username, ts) := approval_on(username, ts, head)
 
-approval_on(username, ts, sha) := {"username": username, "timestamp": ts, "state": "APPROVED", "commit_sha": sha}
+approval_on(username, ts, sha) := {
+	"username": username, "timestamp": ts, "state": "APPROVED", "commit_sha": sha,
+	"author_type": "user", "has_write_access": true,
+}
 
 approval_dismissed(username, ts) := object.union(approval(username, ts), {"state": "DISMISSED"})
 
@@ -70,12 +73,12 @@ approval_no_username(ts) := {"timestamp": ts, "state": "APPROVED"}
 # make_pr builds a PR object.
 # merge_sha: SHA that equals trail.name when this is a merge commit trail.
 # pr_author: GitHub username of the PR creator.
-make_pr(merge_sha, pr_author, commits, approvers) := {
+make_pr(merge_sha, pr_author, commits, reviews) := {
 	"url": "https://github.com/owner/repo/pull/42",
 	"merge_commit": merge_sha,
 	"author": pr_author,
 	"commits": commits,
-	"approvers": approvers,
+	"reviews": reviews,
 	"state": "MERGED",
 	"head_sha": head,
 }
@@ -610,7 +613,7 @@ test_ghost_signer_blocks_approval if {
 	not allowed([make_pr("abc1234", "alice", [signed_commit("sha1", "alice", "ghost")], [approval("bob", 1000001)])])
 }
 
-github_signed(c) := object.union(object.remove(c, ["signer_username"]), {"signed_by_platform": true})
+github_signed(c) := object.union(c, {"signer_username": "web-flow", "signed_by_platform": true})
 
 test_commit_signed_by_platform_passes if {
 	allowed([make_pr("abc1234", "alice", [github_signed(pr_commit("sha1", "alice"))], [approval("bob", 1000001)])])
@@ -656,4 +659,83 @@ test_unlinked_author_with_known_signer_blocks_approval if {
 test_dismissed_review_on_head_fails_on_non_merge_trail if {
 	pr := make_pr("def5678", "alice", [pr_commit("sha1", "alice")], [approval_dismissed("bob", 1000001)])
 	not allow with input as make_input([make_trail("abc1234", "alice <alice@example.com>", [pr])]) with data.params as params
+}
+
+# ---------------------------------------------------------------------------
+# Which reviews count is decided here, from the facts the CLI records
+# ---------------------------------------------------------------------------
+
+single_commit := [pr_commit("sha1", "alice")]
+
+with_review(fields) := object.union(approval("bob", 1000001), fields)
+
+test_bot_approval_does_not_count if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [with_review({"author_type": "bot"})])])
+}
+
+test_approval_from_other_actor_type_does_not_count if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [with_review({"author_type": "other"})])])
+}
+
+test_approval_without_write_access_does_not_count if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [with_review({"has_write_access": false})])])
+}
+
+test_approval_with_unknown_write_access_does_not_count if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [object.remove(approval("bob", 1000001), ["has_write_access"])])])
+}
+
+test_later_request_for_changes_withdraws_approval if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), approval_changes_requested("bob", 1000002)])])
+}
+
+test_same_second_request_for_changes_withdraws_approval if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), approval_changes_requested("bob", 1000001)])])
+}
+
+test_later_dismissal_withdraws_approval if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), approval_dismissed("bob", 1000002)])])
+}
+
+test_request_for_changes_without_time_withdraws_approval if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), object.remove(approval_changes_requested("bob", 0), ["timestamp"])])])
+}
+
+test_request_for_changes_with_null_time_withdraws_approval if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), object.union(approval_changes_requested("bob", 0), {"timestamp": null})])])
+}
+
+test_earlier_request_for_changes_does_not_withdraw if {
+	allowed([make_pr("abc1234", "alice", single_commit, [approval_changes_requested("bob", 1000000), approval("bob", 1000001)])])
+}
+
+test_later_comment_does_not_withdraw if {
+	allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), with_review({"state": "COMMENTED", "timestamp": 1000002})])])
+}
+
+test_another_reviewers_request_for_changes_does_not_withdraw if {
+	allowed([make_pr("abc1234", "alice", single_commit, [approval("bob", 1000001), approval_changes_requested("carol", 1000002)])])
+}
+
+test_approval_without_time_does_not_count if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [object.remove(approval("bob", 1000001), ["timestamp"])])])
+}
+
+# Attestations from a CLI that records approvers only, with no reviews.
+test_pr_without_reviews_fails if {
+	pr := object.union(object.remove(make_pr("abc1234", "alice", single_commit, []), ["reviews"]), {"approvers": [approval("bob", 1000001)]})
+	not allowed([pr])
+}
+
+test_comment_alone_is_not_an_approval if {
+	not allowed([make_pr("abc1234", "alice", single_commit, [with_review({"state": "COMMENTED"})])])
+}
+
+# A commit GitHub signed names web-flow as signer; the named author still needs an independent approval.
+test_platform_signed_commit_author_cannot_self_approve if {
+	not allowed([make_pr("abc1234", "carol", [github_signed(pr_commit("sha1", "alice"))], [approval("alice", 1000001)])])
+}
+
+test_platform_signed_commit_without_signer_passes if {
+	allowed([make_pr("abc1234", "alice", [object.remove(github_signed(pr_commit("sha1", "alice")), ["signer_username"])], [approval("bob", 1000001)])])
 }
