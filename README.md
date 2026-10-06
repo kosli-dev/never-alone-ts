@@ -32,10 +32,10 @@ The collector's only job is trail creation and PR attestation. All evaluation lo
 A commit trail passes when one of its PRs meets all of these:
 
 1. **In this repository**: the PR's URL is in the repository passed as `--params '{"repository": "owner/repo"}'`. A PR anywhere else, such as a fork, doesn't count. Without the param, every trail fails.
-2. **Every commit identified**: each PR commit has an author linked to a GitHub account (`author_username`) and a verified signature, either by a known account (`signer_username`) or by GitHub (`signed_by_platform`, for web edits and merges). The author fields are whatever the commit's writer put there, so the signer is what shows who made it. The signer needs an independent approval too.
-3. **Independent approval on the final commit**: for each PR code author and signer, at least one approval from a different person with write access, given on the PR's final commit, and not withdrawn by a later request for changes or dismissal from the same reviewer. The policy compares the commit each review was given on with the PR's head commit. Commit dates aren't used, because whoever writes a commit sets them.
+2. **Every commit identified**: each PR commit has an author linked to a GitHub account (`author_username`) and a verified signature, either by a known account (`signer_username`) or by GitHub (`signed_by_platform`, for web edits and merges). The author fields are whatever the commit's writer put there, so the signer is what shows who made it. The signer needs an independent approval too. The PR must also list every commit GitHub counts (`commit_count`): GitHub's API returns at most 250, and an unlisted commit's author can't be checked.
+3. **Independent approval on the final commit**: for each PR code author, co-author and signer, and, on a commit that isn't the merge commit, the PR creator (who must be a linked account), at least one approval from a different person with write access, given on the PR's final commit no later than the merge, and not withdrawn by a later request for changes or dismissal from the same reviewer. The policy compares the commit each review was given on with the PR's head commit. Commit dates aren't used, because whoever writes a commit sets them.
 
-A commit with no PR fails. There is no exemption by author name: bot and service-account commits need a PR with a human approval like any other. A bot commit GitHub links to the bot's account (e.g. `dependabot[bot]`) counts as identified; one with no linked account, such as a `GitHub <noreply@github.com>` co-author entry, doesn't.
+A commit with no PR fails. There is no exemption by author name: bot and service-account commits need a PR with a human approval like any other. A bot commit GitHub links to the bot's account (e.g. `dependabot[bot]`) counts as identified; a commit whose author has no linked account doesn't.
 
 Merge commits (where `pr.merge_commit == trail.name`) are treated the same as regular commits for the approval check, but the person who clicked Merge is not counted as a code author.
 
@@ -43,7 +43,7 @@ Unsigned commits fail, so this suits repositories that require signed commits.
 
 Anything that adds a commit after approval needs a new approval, including **Update branch**, a rebase, a conflict fix in the web editor and an applied review suggestion. A reviewer who applies their own suggestion also becomes a commit's author, so someone else has to approve.
 
-This needs a Kosli CLI that records every review (`reviews`, with each review's commit, `author_type` and `has_write_access`), the PR's head commit (`head_sha`) and each commit's signer (`signer_username`, `signed_by_platform`). The CLI records these as facts; this policy decides which reviews count. Attestations made with an older CLI lack these fields, so no approval counts; re-attest with a current CLI.
+This needs a Kosli CLI that records every review (`reviews`, with each review's commit, `author_type` and `has_write_access`), the PR's head commit (`head_sha`), merge time (`merged_at`) and commit total (`commit_count`), and each commit's signature (`verified`, `signer_username`, `signed_by_platform`) and co-authors (`co_author_usernames`). The CLI records these as facts; this policy decides which reviews count. An attestation from an older CLI has no `commit_count`, so it fails with a message to re-attest.
 
 For named test cases with git diagrams and expected outcomes, see [SCENARIOS.md](SCENARIOS.md).
 

@@ -47,7 +47,7 @@ pr_commit_no_user(sha) := {
 	"timestamp": 1000000,
 }
 
-# pr_commit_web_flow: a Copilot co-author entry, with no author_username and author set to GitHub
+# pr_commit_web_flow: a commit authored as GitHub, with no linked account
 pr_commit_web_flow(sha) := {
 	"sha1": sha,
 	"author": "GitHub <noreply@github.com>",
@@ -81,7 +81,11 @@ make_pr(merge_sha, pr_author, commits, reviews) := {
 	"reviews": reviews,
 	"state": "MERGED",
 	"head_sha": head,
+	"merged_at": merged_at,
+	"commit_count": count(commits),
 }
+
+merged_at := 2000000
 
 # ---------------------------------------------------------------------------
 # Missing attestation
@@ -250,7 +254,7 @@ test_multi_author_cross_approval_passes if {
 	count(violations) == 0 with input as make_input([trail]) with data.params as params
 }
 
-# Scenario 14 — faye approves but sami (co-author) still needs approval → violation
+# Scenario 14 — faye approves but sami (the other commit author) still needs approval → violation
 test_multi_author_only_one_committer_approves_fails if {
 	pr := make_pr("abc1234", "sami",
 		[pr_commit("sha_sami", "sami"), pr_commit("sha_faye", "faye")],
@@ -319,7 +323,7 @@ test_absent_username_pr_commit_unverifiable if {
 # not exempt: the author string is set by whoever writes the commit.
 test_web_flow_pr_commit_not_exempt if {
 	pr := make_pr("abc1234", "alice",
-		[pr_commit("sha_alice", "alice"), pr_commit_web_flow("sha_copilot")],
+		[pr_commit("sha_alice", "alice"), pr_commit_web_flow("sha_github")],
 		[approval("bob", 1000001)],
 	)
 	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
@@ -570,7 +574,7 @@ test_unapproved_commit_violation_names_the_repository if {
 	unapproved := make_pr("abc1234", "alice", backdated_push, [approval_on("bob", 1000005, "sha_early")])
 	v := violations with input as make_input([make_trail("abc1234", "alice <alice@example.com>", [unapproved])])
 		with data.params as params
-	v == {"Commit abc1234: no PR in owner/repo has an independent approval on its final commit"}
+	v == {"Commit abc1234: no PR in owner/repo has an independent approval on its final commit before merge"}
 }
 
 # Approval alone does not pass a PR with a commit whose author has no linked account.
@@ -738,4 +742,85 @@ test_platform_signed_commit_author_cannot_self_approve if {
 
 test_platform_signed_commit_without_signer_passes if {
 	allowed([make_pr("abc1234", "alice", [object.remove(github_signed(pr_commit("sha1", "alice")), ["signer_username"])], [approval("bob", 1000001)])])
+}
+
+test_approval_after_merge_fails if {
+	not allowed([make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", merged_at + 1)])])
+}
+
+test_approval_at_merge_time_passes if {
+	allowed([make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", merged_at)])])
+}
+
+test_unmerged_pr_fails if {
+	not allowed([object.remove(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)]), ["merged_at"])])
+}
+
+test_pr_listing_fewer_commits_than_github_counts_fails if {
+	pr := object.union(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)]), {"commit_count": 251})
+	not allowed([pr])
+	v := violations with input as make_input([make_trail("abc1234", "alice <alice@example.com>", [pr])]) with data.params as params
+	some msg in v
+	contains(msg, "lists 1 commits but GitHub counts 251")
+}
+
+test_pr_without_commit_count_fails if {
+	not allowed([object.remove(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)]), ["commit_count"])])
+}
+
+# An AI agent's commit names the person who asked for it as co-author.
+agent_commit := object.union(signed_commit("sha1", "Copilot", "web-flow"), {"signed_by_platform": true, "co_author_usernames": ["alice"]})
+
+test_co_author_cannot_self_approve if {
+	not allowed([make_pr("abc1234", "copilot-swe-agent", [agent_commit], [approval("alice", 1000001)])])
+}
+
+test_co_authored_commit_with_independent_approval_passes if {
+	allowed([make_pr("abc1234", "copilot-swe-agent", [agent_commit], [approval("bob", 1000001)])])
+}
+
+test_null_merge_time_and_commit_count_fail if {
+	p := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)])
+	not allowed([object.union(p, {"merged_at": null})])
+	not allowed([object.union(p, {"commit_count": null})])
+	not allowed([object.union(p, {"commit_count": "1"})])
+}
+
+test_wrong_type_merge_time_fails if {
+	not allowed([object.union(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", merged_at + 1)]), {"merged_at": "0"})])
+}
+
+test_pr_listing_more_commits_than_github_counts_fails if {
+	not allowed([object.union(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)]), {"commit_count": 0})])
+}
+
+test_co_authors_as_a_string_fails if {
+	not allowed([make_pr("abc1234", "alice", [object.union(pr_commit("sha1", "Copilot"), {"co_author_usernames": "alice"})], [approval("bob", 1000001)])])
+}
+
+test_missing_commit_count_says_to_reattest if {
+	pr := object.remove(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)]), ["commit_count"])
+	v := violations with input as make_input([make_trail("abc1234", "alice <alice@example.com>", [pr])]) with data.params as params
+	some msg in v
+	contains(msg, "no commit count recorded")
+}
+
+test_co_author_entries_must_be_accounts if {
+	not allowed([make_pr("abc1234", "alice", [object.union(pr_commit("sha1", "Copilot"), {"co_author_usernames": [["alice"]]})], [approval("alice", 1000001)])])
+	not allowed([make_pr("abc1234", "alice", [object.union(pr_commit("sha1", "Copilot"), {"co_author_usernames": ["ghost"]})], [approval("bob", 1000001)])])
+}
+
+test_non_merge_trail_needs_a_resolved_pr_author if {
+	every author in [null, "", "ghost"] {
+		pr := make_pr("def5678", author, [pr_commit("sha_alice", "alice")], [approval("bob", 1000001)])
+		not allow with input as make_input([make_trail("abc1234", "alice <alice@example.com>", [pr])]) with data.params as params
+	}
+}
+
+test_null_commit_count_gives_no_count_mismatch_message if {
+	pr := object.union(make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)]), {"commit_count": null})
+	v := violations with input as make_input([make_trail("abc1234", "alice <alice@example.com>", [pr])]) with data.params as params
+	every msg in v {
+		not contains(msg, "GitHub counts")
+	}
 }
