@@ -75,7 +75,7 @@ Three rules evaluated per commit in priority order (first match wins):
 
 1. **Service account exemption** — author login matches any pattern in `service_account_patterns` → PASS
 2. **No PR** — no merged PR found for commit → FAIL
-3. **Independent approval** — PR must have at least one approval from someone other than the commit author, and that approval must come after the last code-change commit in the PR → PASS or FAIL
+3. **Independent approval** — each commit author and signer (and the PR author, outside merge commits) needs an approval from someone else, given on the PR's final commit (`head_sha`) before the merge → PASS or FAIL
 
 Merge commits are detected by `pr.merge_commit == trail.name`, not message text.
 

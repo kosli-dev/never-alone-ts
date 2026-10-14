@@ -42,16 +42,29 @@ pr_commit_web_flow(sha) := {
 	"timestamp": 1000000,
 }
 
-# approval: an approver entry
-approval(username, ts) := {"username": username, "timestamp": ts, "state": "APPROVED"}
+# The PR's final commit, and when it merged.
+head_sha := "sha_head"
 
-approval_dismissed(username, ts) := {"username": username, "timestamp": ts, "state": "DISMISSED"}
+merged_at := 1000050
 
-approval_changes_requested(username, ts) := {"username": username, "timestamp": ts, "state": "CHANGES_REQUESTED"}
+# approval: an approver entry, given on the PR's final commit
+approval(username, ts) := approval_on(username, ts, head_sha)
 
-approval_null_username(ts) := {"username": null, "timestamp": ts, "state": "APPROVED"}
+approval_on(username, ts, commit) := {"username": username, "timestamp": ts, "state": "APPROVED", "commit_sha": commit}
 
-approval_no_username(ts) := {"timestamp": ts, "state": "APPROVED"}
+approval_dismissed(username, ts) := {"username": username, "timestamp": ts, "state": "DISMISSED", "commit_sha": head_sha}
+
+approval_changes_requested(username, ts) := {"username": username, "timestamp": ts, "state": "CHANGES_REQUESTED", "commit_sha": head_sha}
+
+approval_null_username(ts) := {"username": null, "timestamp": ts, "state": "APPROVED", "commit_sha": head_sha}
+
+approval_no_username(ts) := {"timestamp": ts, "state": "APPROVED", "commit_sha": head_sha}
+
+# signed_commit: a PR commit whose signature names signer
+signed_commit(sha, username, signer, by_platform) := object.union(pr_commit(sha, username), {
+	"signer_username": signer,
+	"signed_by_platform": by_platform,
+})
 
 # make_pr builds a PR object.
 # merge_sha: SHA that equals trail.name when this is a merge commit trail.
@@ -63,6 +76,8 @@ make_pr(merge_sha, pr_author, commits, approvers) := {
 	"commits": commits,
 	"approvers": approvers,
 	"state": "MERGED",
+	"head_sha": head_sha,
+	"merged_at": merged_at,
 }
 
 # ---------------------------------------------------------------------------
@@ -179,7 +194,7 @@ test_fake_merge_message_no_pr_fails if {
 # ---------------------------------------------------------------------------
 
 # Scenario 1 — independent approval after latest commit → PASS
-test_independent_approval_after_commit_passes if {
+test_independent_approval_of_final_commit_passes if {
 	pr := make_pr("abc1234", "alice", [pr_commit("sha1", "alice")], [approval("bob", 1000001)])
 	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
 	count(violations) == 0 with input as make_input([trail])
@@ -195,16 +210,65 @@ test_self_approval_fails if {
 }
 
 # Scenario 8 — new code pushed after approval → violation
-test_approval_before_latest_commit_fails if {
-	late_commit := {"sha1": "sha_late", "author_username": "alice", "timestamp": 1000010}
-	pr := make_pr("abc1234", "alice",
-		[pr_commit("sha_early", "alice"), late_commit],
-		[approval("bob", 1000005)], # approved at 1000005 but late commit is at 1000010
+test_approval_of_an_earlier_commit_fails if {
+	pr := make_pr(
+		"abc1234", "alice",
+		[pr_commit("sha_early", "alice"), pr_commit(head_sha, "alice")],
+		[approval_on("bob", 1000005, "sha_early")],
 	)
 	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
 	v := violations with input as make_input([trail])
 	some msg in v
 	contains(msg, "independent approval")
+}
+
+# A commit dated before the approval still needs approving: commit dates are
+# set by whoever makes the commit.
+test_backdated_commit_after_approval_fails if {
+	backdated := {"sha1": head_sha, "author_username": "alice", "timestamp": 1}
+	pr := make_pr(
+		"abc1234", "alice",
+		[pr_commit("sha_early", "alice"), backdated],
+		[approval_on("bob", 1000005, "sha_early")],
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# A PR rebased after approval has a new final commit, so it needs approving again.
+test_rebase_after_approval_fails if {
+	pr := make_pr(
+		"abc1234", "alice",
+		[pr_commit(head_sha, "alice")],
+		[approval_on("bob", 1000005, "sha_before_rebase")],
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# An approval given after the merge did not gate it.
+test_approval_after_merge_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [approval("bob", merged_at + 1)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# An attestation with no final commit recorded cannot show what was approved.
+test_missing_head_sha_fails if {
+	pr := object.remove(make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [approval("bob", 1000001)]), ["head_sha"])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# The approver signed a commit that names someone else as its author.
+test_approver_signed_a_commit_fails if {
+	pr := make_pr(
+		"abc1234", "alice",
+		[pr_commit("sha_alice", "alice"), signed_commit(head_sha, "alice", "bob", false)],
+		[approval("bob", 1000001)],
+	)
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
 }
 
 # Scenario 6 — PR exists but has no approvals → violation
@@ -222,7 +286,8 @@ test_no_approvals_fails if {
 
 # Scenario 13 — multi-author PR: sami and faye both commit, each approved by the other → PASS
 test_multi_author_cross_approval_passes if {
-	pr := make_pr("abc1234", "sami",
+	pr := make_pr(
+		"abc1234", "sami",
 		[pr_commit("sha_sami", "sami"), pr_commit("sha_faye", "faye")],
 		[approval("faye", 1000001), approval("sami", 1000002)],
 	)
@@ -232,7 +297,8 @@ test_multi_author_cross_approval_passes if {
 
 # Scenario 14 — faye approves but sami (co-author) still needs approval → violation
 test_multi_author_only_one_committer_approves_fails if {
-	pr := make_pr("abc1234", "sami",
+	pr := make_pr(
+		"abc1234", "sami",
 		[pr_commit("sha_sami", "sami"), pr_commit("sha_faye", "faye")],
 		[approval("faye", 1000001)], # faye approves but nobody approves faye's work
 	)
@@ -248,7 +314,8 @@ test_multi_author_only_one_committer_approves_fails if {
 
 # PR commit author_username is null → "identity unverifiable" violation
 test_null_username_pr_commit_unverifiable if {
-	pr := make_pr("abc1234", "alice",
+	pr := make_pr(
+		"abc1234", "alice",
 		[pr_commit_null_user("sha1")],
 		[approval("bob", 1000001)],
 	)
@@ -260,7 +327,8 @@ test_null_username_pr_commit_unverifiable if {
 
 # Null username service account PR commit: service account trail → no identity violation
 test_null_username_service_account_trail_exempt if {
-	pr := make_pr("abc1234", "alice",
+	pr := make_pr(
+		"abc1234", "alice",
 		[pr_commit_null_user("sha1")],
 		[approval("bob", 1000001)],
 	)
@@ -273,7 +341,8 @@ test_null_username_service_account_trail_exempt if {
 
 # All null author_usernames must not vacuously pass — identity violation fires
 test_all_null_usernames_no_vacuous_pass if {
-	pr := make_pr("abc1234", "alice",
+	pr := make_pr(
+		"abc1234", "alice",
 		[pr_commit_null_user("sha1"), pr_commit_null_user("sha2")],
 		[approval("bob", 1000001)],
 	)
@@ -285,7 +354,8 @@ test_all_null_usernames_no_vacuous_pass if {
 
 # Absent author_username field (as sent by Kosli when identity unresolvable) → "identity unverifiable"
 test_absent_username_pr_commit_unverifiable if {
-	pr := make_pr("abc1234", "alice",
+	pr := make_pr(
+		"abc1234", "alice",
 		[pr_commit_no_user("sha1")],
 		[approval("bob", 1000001)],
 	)
@@ -297,7 +367,8 @@ test_absent_username_pr_commit_unverifiable if {
 
 # GitHub web-flow / Copilot co-author commit: author="GitHub <noreply@github.com>", no author_username → exempt
 test_web_flow_pr_commit_exempt if {
-	pr := make_pr("abc1234", "alice",
+	pr := make_pr(
+		"abc1234", "alice",
 		[pr_commit("sha_alice", "alice"), pr_commit_web_flow("sha_copilot")],
 		[approval("bob", 1000001)],
 	)
@@ -346,9 +417,11 @@ test_only_failing_commits_reported if {
 # SHAs are exactly 7 chars: violation messages use substring(trail.name, 0, 7).
 test_direct_commit_and_pr_in_range_one_violation if {
 	direct := make_trail("dc20001", "alice <alice@example.com>", [])
-	pr := make_pr("mr62001", "alice",
+	pr := make_pr(
+		"mr62001", "alice",
 		[pr_commit("sha_c3", "alice"), pr_commit("sha_c4", "alice")],
-		[approval("bob", 1000001)])
+		[approval("bob", 1000001)],
+	)
 	merged := make_trail("mr62001", "alice <alice@example.com>", [pr])
 	v := violations with input as make_input([direct, merged])
 	count(v) == 1
@@ -362,12 +435,16 @@ test_direct_commit_and_pr_in_range_one_violation if {
 
 # Scenario 16 — two merge commits, each backed by a PR with an independent approver → PASS
 test_two_prs_both_approved_passes if {
-	pr_a := make_pr("mr63001", "sami",
+	pr_a := make_pr(
+		"mr63001", "sami",
 		[pr_commit("sha_c2", "sami")],
-		[approval("faye", 1000001)])
-	pr_b := make_pr("mr64001", "faye",
+		[approval("faye", 1000001)],
+	)
+	pr_b := make_pr(
+		"mr64001", "faye",
 		[pr_commit("sha_c3", "faye")],
-		[approval("sami", 1000001)])
+		[approval("sami", 1000001)],
+	)
 	trail_a := make_trail("mr63001", "sami <sami@example.com>", [pr_a])
 	trail_b := make_trail("mr64001", "faye <faye@example.com>", [pr_b])
 	count(violations) == 0 with input as make_input([trail_a, trail_b])
@@ -375,12 +452,16 @@ test_two_prs_both_approved_passes if {
 
 # Scenario 17 — two merge commits; first PR independently approved, second self-approved → one violation
 test_two_prs_one_self_approved_fails if {
-	pr_a := make_pr("mr65001", "sami",
+	pr_a := make_pr(
+		"mr65001", "sami",
 		[pr_commit("sha_c2", "sami")],
-		[approval("faye", 1000001)])
-	pr_b := make_pr("mr66001", "faye",
+		[approval("faye", 1000001)],
+	)
+	pr_b := make_pr(
+		"mr66001", "faye",
 		[pr_commit("sha_c3", "faye")],
-		[approval("faye", 1000001)])
+		[approval("faye", 1000001)],
+	)
 	trail_a := make_trail("mr65001", "sami <sami@example.com>", [pr_a])
 	trail_b := make_trail("mr66001", "faye <faye@example.com>", [pr_b])
 	v := violations with input as make_input([trail_a, trail_b])
@@ -413,9 +494,11 @@ test_changes_requested_approval_fails if {
 
 # DISMISSED + APPROVED from independent reviewer: the APPROVED one still satisfies the check
 test_dismissed_plus_approved_passes if {
-	pr := make_pr("abc1234", "alice",
+	pr := make_pr(
+		"abc1234", "alice",
 		[pr_commit("sha1", "alice")],
-		[approval_dismissed("bob", 1000001), approval("carol", 1000002)])
+		[approval_dismissed("bob", 1000001), approval("carol", 1000002)],
+	)
 	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
 	count(violations) == 0 with input as make_input([trail])
 }
@@ -460,4 +543,53 @@ test_wrong_trails_type_fails_closed if {
 	some msg in v
 	contains(msg, "input.trails is missing")
 	not allow with input as {"trails": "not-an-array"}
+}
+
+# A merged PR always has a merge time. Without one, no approval can be shown
+# to have come before the merge.
+test_missing_merged_at_fails if {
+	pr := object.remove(make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [approval("bob", 1000001)]), ["merged_at"])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+test_non_numeric_merged_at_fails if {
+	pr := object.union(make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [approval("bob", 1000001)]), {"merged_at": "2026-03-01T14:00:00Z"})
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+test_approval_with_no_commit_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [object.remove(approval("bob", 1000001), ["commit_sha"])])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# An empty or null final commit must not match an approval with the same.
+test_empty_head_sha_fails if {
+	pr := object.union(make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [approval_on("bob", 1000001, "")]), {"head_sha": ""})
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+test_null_head_sha_fails if {
+	pr := object.union(make_pr("abc1234", "alice", [pr_commit(head_sha, "alice")], [approval_on("bob", 1000001, null)]), {"head_sha": null})
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# Outside a merge commit, the PR author needs someone else's approval even
+# when they made none of its commits.
+test_non_merge_pr_author_approving_own_pr_fails if {
+	pr := make_pr("def5678", "alice", [pr_commit(head_sha, "carol")], [approval("alice", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
+}
+
+# A PR whose only commits name no person has nobody to approve, which must
+# not pass by default.
+test_no_people_to_approve_fails if {
+	pr := make_pr("abc1234", "alice", [pr_commit_web_flow(head_sha)], [approval("bob", 1000001)])
+	trail := make_trail("abc1234", "alice <alice@example.com>", [pr])
+	not allow with input as make_input([trail])
 }

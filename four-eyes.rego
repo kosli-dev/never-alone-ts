@@ -29,8 +29,8 @@ trail_compliant(trail) if {
 	is_service_account(trail)
 }
 
-# Human-authored commits are compliant when an associated PR has independent
-# approval covering every author after the latest code commit.
+# Human-authored commits are compliant when an associated PR has an
+# independent approval of its final commit for every person who made it.
 trail_compliant(trail) if {
 	not is_service_account(trail)
 	attest := pr_attest(trail)
@@ -66,8 +66,13 @@ pr_commit_authors(pr) := {u |
 	u != null
 }
 
-# Latest Unix timestamp among PR branch commits.
-latest_commit_ts(pr) := max({c.timestamp | some c in pr.commits})
+# Accounts whose key signed a PR commit. A commit's author can be set to
+# anyone, but its signer cannot. An unsigned commit names only its author.
+pr_commit_signers(pr) := {u |
+	some c in pr.commits
+	u := c.signer_username
+	is_string(u)
+}
 
 # Every commit on the PR has a resolvable author (or is a known service-account
 # style commit like web-flow / Copilot co-auth that we tolerate).
@@ -91,40 +96,36 @@ is_merge_commit(trail, pr) if {
 	trail.name == pr.merge_commit
 }
 
-# Regular commit: PR branch authors + PR author all need independent approval after last code commit.
-has_independent_approval(trail, pr) if {
+# Regular commit: the PR author needs independent approval too.
+pr_people(trail, pr) := (pr_commit_authors(pr) | pr_commit_signers(pr)) | {pr.author} if {
 	not is_merge_commit(trail, pr)
-	cutoff := latest_commit_ts(pr)
-	all_authors := pr_commit_authors(pr) | {pr.author}
-	count(all_authors) > 0
-
-	# At least one approver must exist to satisfy four-eyes.
-	count(pr.approvers) > 0
-	every author in all_authors {
-		some approver in pr.approvers
-		approver.state == "APPROVED"
-		is_string(approver.username)
-		approver.username != author
-		approver.timestamp > cutoff
-	}
 }
 
-# Merge commit: only PR branch commit authors need independent approval.
-# The merge button clicker did not write code and requires no separate review.
-has_independent_approval(trail, pr) if {
+# Merge commit: only the people who made the PR's commits need approving.
+pr_people(trail, pr) := pr_commit_authors(pr) | pr_commit_signers(pr) if {
 	is_merge_commit(trail, pr)
-	cutoff := latest_commit_ts(pr)
-	all_authors := pr_commit_authors(pr)
-	count(all_authors) > 0
+}
 
-	# At least one approver must exist to satisfy four-eyes.
-	count(pr.approvers) > 0
-	every author in all_authors {
+# An approval counts only on the PR's final commit. Commit dates are set by
+# whoever makes the commit, so they cannot show what an approval covered.
+# A PR rebased after approval needs approving again, even with its code unchanged.
+approval_of_final_commit(pr, approver) if {
+	approver.state == "APPROVED"
+	is_string(approver.username)
+	is_string(pr.head_sha)
+	pr.head_sha != ""
+	approver.commit_sha == pr.head_sha
+	is_number(pr.merged_at)
+	approver.timestamp <= pr.merged_at
+}
+
+has_independent_approval(trail, pr) if {
+	people := pr_people(trail, pr)
+	count(people) > 0
+	every person in people {
 		some approver in pr.approvers
-		approver.state == "APPROVED"
-		is_string(approver.username)
-		approver.username != author
-		approver.timestamp > cutoff
+		approval_of_final_commit(pr, approver)
+		approver.username != person
 	}
 }
 
@@ -216,7 +217,7 @@ violations contains msg if {
 	count(attest.pull_requests) > 0
 	not any_pr_fully_approved(trail, attest)
 	msg := sprintf(
-		"Commit %v: no independent approval after latest code commit",
+		"Commit %v: no independent approval of the PR's final commit",
 		[substring(trail.name, 0, 7)],
 	)
 }

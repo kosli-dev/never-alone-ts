@@ -32,9 +32,11 @@ Each commit trail is checked in order; the first matching rule determines its st
 
 1. **Service account** — the git commit author matches a service account pattern → PASS (no PR required)
 2. **No PR** — no merged PR found for the commit → FAIL
-3. **Independent approval** — for each PR code author, there must be at least one `APPROVED` review from a different user after the last code commit in the PR → PASS or FAIL
+3. **Independent approval** — for each person who made the PR's code (commit authors, commit signers and, outside merge commits, the PR author), there must be an `APPROVED` review from a different user. The review must be on the PR's final commit (`head_sha`) and given before the merge → PASS or FAIL
 
-Merge commits (where `pr.merge_commit == trail.name`) are treated the same as regular commits for the approval check, but the person who clicked Merge is not counted as a code author.
+This needs a Kosli CLI that records `head_sha` and each approval's `commit_sha`. Attestations from older CLIs fail the approval check.
+
+Merge commits (where `pr.merge_commit == trail.name`) are treated the same as regular commits for the approval check, but the PR author is not counted unless they made a commit.
 
 PR commits authored by `GitHub <noreply@github.com>` (GitHub web-flow and Copilot co-authored commits) are exempt from the identity verification check.
 

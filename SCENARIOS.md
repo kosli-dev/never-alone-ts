@@ -10,9 +10,9 @@ Each scenario describes a commit pattern, the expected result, and why. The git 
 
 ### 1. Standard PR with independent approval
 
-**Description:** A developer opens a PR, a different developer reviews and approves it, then the PR is merged. The approval timestamp is after the latest commit in the PR. This is the happy path.
+**Description:** A developer opens a PR, a different developer reviews and approves it, then the PR is merged. The approval is on the PR's final commit. This is the happy path.
 
-**Result:** `PASS` — PR has an independent approval after the latest code commit.
+**Result:** `PASS` — PR has an independent approval of its final commit.
 
 ```mermaid
 gitGraph
@@ -24,7 +24,7 @@ gitGraph
    merge feature/add-login id: "Merge PR #42" tag: "v1.1.0"
 ```
 
-> `fix typo` committed at 10:00. Bob approves at 10:30. PR merged at 10:31.
+> Bob approves after `fix typo`, so on the PR's final commit. The PR merges after that.
 
 ---
 
@@ -49,7 +49,7 @@ gitGraph
 
 **Description:** When GitHub merges a PR using the "Create a merge commit" strategy, it produces a commit on `main` with two parents (the previous `main` tip and the feature branch tip). The control identifies this as a merge commit by parent count and applies the PR approval check, using only the PR branch commit authors — not the login of whoever clicked the Merge button, since they were executing a merge rather than contributing code.
 
-**Result:** `PASS` — merge commit is linked to a PR that has an independent approval after the latest code commit.
+**Result:** `PASS` — merge commit is linked to a PR that has an independent approval of its final commit.
 
 ```mermaid
 gitGraph
@@ -138,9 +138,9 @@ gitGraph
 
 ### 8. New code pushed after approval
 
-**Description:** A reviewer approves the PR, but the developer then pushes additional commits after the approval. The approval predates the latest code commit, so the reviewer never saw the final state of the code.
+**Description:** A reviewer approves the PR, but the developer then pushes additional commits after the approval. The approval is on an earlier commit, so the reviewer never saw the final state of the code.
 
-**Result:** `FAIL` — approval exists but predates the latest commit.
+**Result:** `FAIL` — approval exists but is not on the PR's final commit.
 
 ```mermaid
 gitGraph
@@ -154,7 +154,7 @@ gitGraph
    merge feature/api id: "Merge PR #51" type: REVERSE tag: "v1.1.0"
 ```
 
-> Bob approves at 10:00. `★` pushed at 11:00. Approval is before the latest commit → FAIL.
+> Bob approves `add API endpoint`. `★` is pushed after. Bob's approval is not on the final commit → FAIL.
 
 ---
 
