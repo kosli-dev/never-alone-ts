@@ -20,9 +20,9 @@ Every code change that reaches a production release must have been reviewed and 
 The control operationalises this by examining all commits in a release range (the delta between two tags) and verifying that each one either:
 
 - was authored by an automated agent (service account) that is trusted by policy, or
-- was delivered via a pull request that received at least one independent approval *after* the last code commit in that PR.
+- was delivered via a pull request that received at least one independent approval of the PR's final commit, given before the merge.
 
-The merge commit that lands on the default branch is identified via `pr.merge_commit`. Its author is excluded from the author set — the person who clicked Merge was executing a merge rather than contributing code. Approval is required from someone who did not author any PR branch commit.
+The merge commit that lands on the default branch is identified via `pr.merge_commit`. The PR author is not counted for it unless they made a commit on the PR. Approval is required from someone other than each PR commit author and signer.
 
 A violation means a commit reached the release that was not subject to independent review at any point in its lifecycle.
 
@@ -74,20 +74,24 @@ Kosli's `attest pullrequest github` fetches PR data from the GitHub API and stor
       "url": "https://github.com/owner/repo/pull/42",
       "author": "alice",
       "merge_commit": "<40-char sha>",
+      "head_sha": "<40-char sha of the PR's final commit>",
+      "merged_at": 1770191700,
       "state": "MERGED",
       "commits": [
         {
           "sha1": "<40-char>",
           "author": "Alice Smith <alice@example.com>",
           "author_username": "alice",
-          "timestamp": 1770191490
+          "timestamp": 1770191490,
+          "signer_username": "alice"
         }
       ],
       "approvers": [
         {
           "username": "bob",
           "timestamp": 1770191600,
-          "state": "APPROVED"
+          "state": "APPROVED",
+          "commit_sha": "<40-char sha of the PR's final commit>"
         }
       ]
     }
@@ -112,16 +116,17 @@ For each trail in input.trails:
      (no author_username) and is not a web-flow commit?  → FAIL (identity unverifiable)
   3. No pull_requests in pr-review attestation?          → FAIL
   4. PR found — does it have an independent approval
-     after the latest code commit?                       → PASS / FAIL
+     of the PR's final commit?                           → PASS / FAIL
 ```
 
-Step 4 detail — "independent approval after latest code commit":
+Step 4 detail — "independent approval of the PR's final commit":
 
 - **Merge commit detection**: a commit is the PR merge commit when `trail.name == pr.merge_commit`. This covers squash merges, regular merges, and rebase-merges since all produce a merge commit SHA in the PR data.
-- **Author set** for merge commits: only the GitHub usernames of PR branch commit authors (`pr.commits[].author_username`). The identity of whoever clicked Merge is excluded.
-- **Author set** for non-merge commits: PR branch commit authors plus `pr.author` (the PR creator).
+- **Author set** for merge commits: the GitHub usernames of PR branch commit authors (`pr.commits[].author_username`) and commit signers (`pr.commits[].signer_username`). The PR author is not counted unless they made a commit. The signer is included because git lets anyone set a commit's author, but not its signature. An unsigned commit names only its author.
+- **Author set** for non-merge commits: the same, plus `pr.author` (the PR creator).
 - **Independent**: every username in the author set must have at least one approval from a *different* username.
-- **After**: every such approval must satisfy `approver.timestamp > max(pr.commits[].timestamp)` (Unix epoch seconds).
+- **Final commit**: every such approval must be on the PR's final commit (`approver.commit_sha == pr.head_sha`). Commit timestamps are not used, because whoever makes a commit sets its date.
+- **Before merge**: every such approval must satisfy `approver.timestamp <= pr.merged_at`.
 - **Web-flow commits**: PR commits where `author` contains a service account pattern (e.g. `GitHub <noreply@github.com>`) and `author_username` is absent are treated as system-generated (GitHub web-flow, Copilot co-author expansions) and excluded from both the identity check and the author set.
 - **Multiple PRs**: if a commit has multiple associated PRs, any single PR with a passing approval is sufficient.
 
@@ -189,8 +194,8 @@ Policy constants are set directly in `four-eyes.rego`. The collector has no conf
 
 | Outcome | Condition |
 | --- | --- |
-| `PASS` | Every commit trail is either exempt, or was delivered via a PR that received at least one independent approval after its last code change. |
-| `FAIL` | At least one trail is not exempt and either (a) has no `pr-review` attestation, (b) has a PR commit with an unresolvable identity, (c) has no associated PR, or (d) has no independent approval post-dating all code commits. The violation message includes the commit SHA (7-char), and PR URL where applicable. |
+| `PASS` | Every commit trail is either exempt, or was delivered via a PR that received at least one independent approval of its final commit before the merge. |
+| `FAIL` | At least one trail is not exempt and either (a) has no `pr-review` attestation, (b) has a PR commit with an unresolvable identity, (c) has no associated PR, or (d) has no independent approval of the PR's final commit given before the merge. The violation message includes the commit SHA (7-char), and PR URL where applicable. |
 
 ---
 
@@ -213,16 +218,16 @@ See [`SCENARIOS.md`](SCENARIOS.md) for the full set of named test cases with dia
 | 16 | Two PRs in range — both independently approved | PASS |
 | 17 | Two PRs in range — one is self-approved | FAIL |
 
-> **Note:** Scenarios 9/10 (post-approval merge-from-base `ignore`/`strict` modes) and scenario 4 (fake merge commit message detection via parent count) are no longer applicable. Merge-from-base commits are counted in the approval timestamp cutoff. Merge commit detection uses `pr.merge_commit` rather than parent count or message text.
+> **Note:** Scenarios 9/10 (post-approval merge-from-base `ignore`/`strict` modes) and scenario 4 (fake merge commit message detection via parent count) are no longer applicable. A merge-from-base commit changes the PR's final commit, so it needs a fresh approval. Merge commit detection uses `pr.merge_commit` rather than parent count or message text.
 
 ---
 
 ## Limitations
 
 - **GitHub-only**: PR and approval data is fetched exclusively from the GitHub API via the Kosli CLI. Approvals recorded in external systems (Jira, email, Slack) are invisible to this control.
-- **Approval dismissal not tracked**: if a review approval was later dismissed, the Kosli `pr-review` attestation captures a snapshot at attestation time. The control's own timestamp comparison is the primary safeguard against stale approvals.
+- **Approval dismissal not tracked**: if a review approval was later dismissed, the Kosli `pr-review` attestation captures a snapshot at attestation time. Requiring the approval to be on the PR's final commit is the primary safeguard against stale approvals.
 - **Author identity requires a linked GitHub account**: if a PR branch commit's `author_username` cannot be resolved by Kosli (absent field), and the commit is not recognised as a web-flow commit, it is flagged as "identity unverifiable". Ensure the GitHub token has sufficient scope.
-- **Merge-from-base commits count as code commits**: a `Merge branch 'main' into feature-x` commit pushed after an approval raises the cutoff timestamp. The approver must re-approve after such a sync commit.
+- **Any push after approval needs a fresh approval**: a sync commit (`Merge branch 'main' into feature-x`) or a rebase gives the PR a new final commit. This holds even when the PR's own changes are unchanged.
 - **No enforcement at merge time**: this control is evaluated at release time, not at the moment a PR is merged. A violation means the release must be blocked or remediated; it does not prevent the offending merge from happening.
 
 ---
@@ -233,7 +238,7 @@ When the control fails, the violation message identifies the commit SHA and the 
 
 1. **No associated PR** — the commit was pushed directly to the default branch. Options: revert the commit and re-deliver via a PR, or obtain a documented exception if the change was an emergency hotfix.
 2. **No independent approval** — the PR was approved only by its own authors, or had no approvals. Request review from an independent person and re-run the evaluation after they approve.
-3. **Approval predates latest commit** — a reviewer approved before the final code was pushed (including a branch sync commit). Re-request review so the approver can confirm the final state.
+3. **Approval not on the final commit** — a reviewer approved before the last push (including a branch sync or rebase). Re-request review so the approver can confirm the final state.
 4. **Identity unverifiable** — a PR branch commit could not be linked to a GitHub account. Check that the commit was authored via a linked GitHub identity, or add the committer pattern to `service_account_patterns` if it is a known system account.
 
 ---
@@ -242,7 +247,7 @@ When the control fails, the violation message identifies the commit SHA and the 
 
 | Pattern | Why it triggers | Resolution |
 | --- | --- | --- |
-| Developer syncs feature branch with `main` after approval (`Merge branch 'main' into feature-x`) | This merge-from-base commit post-dates the approval, raising the cutoff timestamp | Request re-review after the sync commit, or adopt a workflow that syncs before requesting review |
+| Developer syncs or rebases the feature branch after approval | The PR's final commit changes, so the approval no longer covers it | Request re-review after the sync, or sync before requesting review |
 | Bot commits not matching any `service_account_patterns` entry | The author string is not in the exemption set | Add a regex matching the bot's `Name <email>` string to `service_account_patterns` in `four-eyes.rego` |
 | Copilot co-authored commit triggering identity violation | Kosli expands `Co-authored-by: Copilot` into a separate commit entry with `author="GitHub <noreply@github.com>"` and no `author_username` | The `noreply@github.com` service account pattern exempts these entries; ensure it is present in `service_account_patterns` |
 
@@ -268,11 +273,14 @@ The `pr-review` attestation is a built-in Kosli `pull_request` type populated by
 | --- | --- | --- |
 | `pull_requests[].author` | `string` | GitHub username of the PR creator |
 | `pull_requests[].merge_commit` | `string` | SHA of the commit that landed on the default branch |
+| `pull_requests[].head_sha` | `string` | SHA of the PR's final commit |
+| `pull_requests[].merged_at` | `number` | Unix epoch seconds when the PR merged |
 | `pull_requests[].commits[].sha1` | `string` | Full SHA of the PR branch commit |
 | `pull_requests[].commits[].author` | `string` | `"Name <email>"` of the git commit author |
 | `pull_requests[].commits[].author_username` | `string \| absent` | GitHub username; absent when the identity cannot be resolved |
-| `pull_requests[].commits[].timestamp` | `number` | Unix epoch seconds of the commit |
+| `pull_requests[].commits[].signer_username` | `string \| absent` | GitHub username whose key signed the commit; absent when unsigned |
 | `pull_requests[].approvers[].username` | `string` | GitHub username of the reviewer |
 | `pull_requests[].approvers[].timestamp` | `number` | Unix epoch seconds when the approval was submitted |
+| `pull_requests[].approvers[].commit_sha` | `string` | SHA of the PR commit the approval was given on |
 
 The trail-level `git_commit_info.author` field (set by `kosli begin trail --commit <sha>`) carries the git `author` field of the merge commit as `"Name <email>"` and is used for service account detection.
